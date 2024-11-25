@@ -1,0 +1,5 @@
+{
+  "agent1": "agent.random_agent.RandomAgent",
+  "agent2": "agent.random_agent.RandomAgent",
+  "gui": "ui.tk_gui.TkGUI"
+}
