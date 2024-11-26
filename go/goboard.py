@@ -236,6 +236,34 @@ class Board():
       return None
     return string
 
+  def __eq__(self, other: object) -> bool:
+    if not isinstance(other, Board):
+      return False
+    
+    if self.num_rows != other.num_rows or self.num_cols != other.num_cols:
+      return False
+    
+    for row in range(1, 1 + self.num_rows):
+      for col in range(1, 1 + self.num_cols):
+        point = Point(row=row, col=col)
+        if self.get(point) != other.get(point):
+          return False
+
+    return True
+  
+  def __str__(self) -> str:
+    STONE_TO_CHAR = {
+      None: '.',
+      Player.white: 'o',
+      Player.black: 'x'
+    }
+    str = ''
+    for row in range(1, 1 + self.num_rows):
+      for col in range(1, 1 + self.num_cols):
+        str += STONE_TO_CHAR[self.get(Point(row=row, col=col))]
+      str += '\n'
+    return str
+
   def __eq__(self, other):
     return isinstance(other, Board) and \
       self.num_rows == other.num_rows and \
