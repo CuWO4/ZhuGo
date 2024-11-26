@@ -5,7 +5,8 @@
       "analysis_mode": true,
       "need_move_queue": true,
 
-      "c": 1.0
+      "c": 1.0,
+      "thread_n": 16
     }
   },
   "agent2": {
@@ -13,8 +14,9 @@
     "args": {
       "analysis_mode": true,
       "need_move_queue": true,
-
-      "c": 1.0
+      
+      "c": 1.0,
+      "thread_n": 16
     }
   },
   "gui": "ui.tk_gui.TkGUI",
