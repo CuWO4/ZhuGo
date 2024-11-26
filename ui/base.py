@@ -19,5 +19,5 @@ class UI:
   
   @staticmethod
   def enqueue_move(move_queue: multiprocessing.Queue, move: Move):
-    timestamp = int(time.time() * 1000)
+    timestamp = time.time()
     move_queue.put((move, timestamp))

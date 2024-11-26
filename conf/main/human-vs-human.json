@@ -1,0 +1,11 @@
+{
+  "agent1": {
+    "class_name": "agent.human_agent.HumanAgent",
+    "args": {}
+  },
+  "agent2": {
+    "class_name": "agent.human_agent.HumanAgent",
+    "args": {}
+  },
+  "gui": "ui.tk_gui.TkGUI"
+}

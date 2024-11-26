@@ -34,9 +34,10 @@ class MCTSAgent(Agent):
   thread_n
     simulate thread counts
   '''
-  def __init__(self, *, c: float = 1.0, n0: int = 500, beta: float = 0.3, max_second: int = 120, thread_n: int = 10, 
+  def __init__(self, *, analysis_mode: bool = False, c: float = 1.0, n0: int = 500, beta: float = 0.3, max_second: int = 120, thread_n: int = 10, 
                need_move_queue: bool = False, need_mcts_queue: bool = True):
     super().__init__(need_move_queue=need_move_queue, need_mcts_queue=need_mcts_queue)
+    self.analysis_mode: bool = analysis_mode
     self.c: float = c
     self.n0: int = n0
     self.beta: float = beta
@@ -46,6 +47,8 @@ class MCTSAgent(Agent):
 
   def select_move(self, game_state: GameState) -> Move:
     assert game_state.board.num_rows == game_state.board.num_cols
+
+    turn_start_timestamp = time.time()
 
     board = game_state.board
 
@@ -66,8 +69,8 @@ class MCTSAgent(Agent):
     visited_times = np.zeros(policy_size, dtype=np.float64)
 
     with multiprocessing.Pool(self.thread_n) as pool:
-      starttime = time.time()
-      while np.sum(visited_times) < self.n0 or self.entropy(visited_times) > self.beta * math.log2(policy_size):
+      while self.analysis_mode or \
+        ((np.sum(visited_times) < self.n0 or self.entropy(visited_times) > self.beta * math.log2(policy_size)) and time.time() - turn_start_timestamp < self.max_second):
         ucb = self.calculate_ucb(reward_sum, visited_times, legal_mask)        
         max_ucb_indexes = np.argwhere(ucb >= np.max(ucb) - 0.1).flatten()
         indexes = np.random.choice(max_ucb_indexes, size=self.thread_n, replace=True)
@@ -82,8 +85,12 @@ class MCTSAgent(Agent):
           
         print(f'{self.entropy(visited_times):.2f} {int(np.sum(visited_times))}')
         
-        if time.time() - starttime > self.max_second:
-          break
+        if self.analysis_mode:
+          assert self.move_queue is not None
+          human_move = self.dequeue_move(turn_start_timestamp, game_state)
+          if human_move is not None:
+            self.enqueue_empty_mcts_data(board.size)
+            return human_move
 
     self.enqueue_empty_mcts_data(board.size)
     return idx_to_move(np.argmax(visited_times), board.size)

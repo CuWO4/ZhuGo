@@ -25,17 +25,17 @@ class Agent:
     if self.need_mcts_queue:
       self.mcts_queue = mcts_queue
 
-  def dequeue_move(self, turn_start_timestamp: int) -> Move:
-    '''get last move after turn_start_timestamp(ms)'''
+  def dequeue_move(self, turn_start_timestamp: int, game_state: GameState) -> Move:
+    '''get last valid move after turn_start_timestamp(ms)'''
     if self.move_queue is None:
       return None
     
-    last_move = None
+    last_valid_move = None
     while not self.move_queue.empty():
       move, time_stamp = self.move_queue.get()
-      if time_stamp >= turn_start_timestamp:
-        last_move = move
-    return last_move
+      if time_stamp >= turn_start_timestamp and game_state.is_valid_move(move):
+        last_valid_move = move
+    return last_valid_move
       
   def enqueue_mcts_data(self, q: iter, visited_times: iter, best_idx: int | None, size: tuple[int, int]):
     '''q and visited_times indexing method should be consistent with utils.move_idx_transformer'''

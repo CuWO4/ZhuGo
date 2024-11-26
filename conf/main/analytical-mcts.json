@@ -1,0 +1,17 @@
+{
+  "agent1": {
+    "class_name": "agent.mcts_agent_1_ord.MCTSAgent",
+    "args": {
+      "analysis_mode": true,
+      "need_move_queue": true
+    }
+  },
+  "agent2": {
+    "class_name": "agent.mcts_agent_1_ord.MCTSAgent",
+    "args": {
+      "analysis_mode": true,
+      "need_move_queue": true
+    }
+  },
+  "gui": "ui.tk_gui.TkGUI"
+}
