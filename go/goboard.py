@@ -105,7 +105,10 @@ class Board():
       init_corner_table(dim)
     self.neighbor_table = neighbor_tables[dim]
     self.corner_table = corner_tables[dim]
-
+    
+  def size(self) -> tuple[int, int]:
+    '''return row_n, col_n'''
+    return self.num_rows, self.num_cols
 
   def neighbors(self, point: Point):
     return self.neighbor_table[point]
