@@ -5,7 +5,7 @@ from agent.base import Agent
 import json
 import importlib
 import argparse
-
+import agent.mcts_agent_complete
 def parse_args() -> tuple[str]:
   parser = argparse.ArgumentParser()
   parser.add_argument('-c', '--conf', type=str, 
