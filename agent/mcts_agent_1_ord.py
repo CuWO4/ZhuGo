@@ -8,7 +8,6 @@ from utils.move_idx_transformer import idx_to_move, move_to_idx
 
 import numpy as np
 import math
-import copy
 import multiprocessing
 import time
 
@@ -71,9 +70,9 @@ class MCTSAgent1Order(Agent):
 
     with multiprocessing.Pool(self.thread_n) as pool:
       while self.analysis_mode or \
-        ((np.sum(visited_times) < self.n0 or self.entropy(visited_times) > self.beta * math.log2(policy_size)) and time.time() - turn_start_timestamp < self.max_second):
+        ((np.sum(visited_times) < self.n0 or self.entropy(visited_times) > self.beta * math.log(policy_size)) and time.time() - turn_start_timestamp < self.max_second):
         ucb = self.calculate_ucb(reward_sum, visited_times, legal_mask)
-        max_ucb_indexes = np.argwhere(ucb > np.max(ucb) - 0.1).flatten()
+        max_ucb_indexes = np.argwhere(ucb > np.max(ucb) - 0.02).flatten()
         indexes = np.random.choice(max_ucb_indexes, size=self.thread_n, replace=True)
 
         results = self.simulate_game(game_state, indexes, self.random_agent, pool, self.thread_n)
@@ -105,7 +104,7 @@ class MCTSAgent1Order(Agent):
   def simulate_game(game_state: GameState, indexes: list[int], agent: Agent, pool: multiprocessing.Pool, thread_n: int) -> list[tuple[int, Player]]:
     results = pool.starmap(
       MCTSAgent1Order.simulate_worker,
-      [(GameState(copy.deepcopy(game_state.board), game_state.next_player, None, None, game_state.komi), indexes[i], agent) for i in range(thread_n)]
+      [(game_state, indexes[i], agent) for i in range(thread_n)]
     )
     return results
 
