@@ -112,7 +112,8 @@ class MCTSNode:
     
     if self.legal_move_count > 0:
       ucb = self.calculate_ucb()
-      move_idx = np.argmax(ucb)
+      max_ucb_indexes = np.argwhere(ucb == np.max(ucb)).flatten()
+      move_idx = np.random.choice(max_ucb_indexes)
     else:
       move_idx = move_to_idx(Move.pass_turn(), self.game_state.board.size)
     
