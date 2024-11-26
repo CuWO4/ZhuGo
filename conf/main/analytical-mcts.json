@@ -13,5 +13,6 @@
       "need_move_queue": true
     }
   },
-  "gui": "ui.tk_gui.TkGUI"
+  "gui": "ui.tk_gui.TkGUI",
+  "game": {}
 }

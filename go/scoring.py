@@ -133,5 +133,5 @@ def compute_game_result(game_state) -> GameResult:
   return GameResult(
     territory.num_black_territory + territory.num_black_stones,
     territory.num_white_territory + territory.num_white_stones,
-    komi=7.5)
+    komi=game_state.komi)
 # end::scoring_compute_game_result[]

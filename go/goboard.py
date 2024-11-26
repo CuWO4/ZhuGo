@@ -308,10 +308,11 @@ class Move():
 
 
 class GameState():
-  def __init__(self, board: Board, next_player: Player, previous_state, last_move: Move):
+  def __init__(self, board: Board, next_player: Player, previous_state, last_move: Move, komi: float):
     self.board: Board = board
     self.next_player: Player = next_player
     self.previous_state = previous_state
+    self.komi: float = komi
     if previous_state is None:
       self.previous_states = frozenset()
     else:
@@ -327,13 +328,13 @@ class GameState():
       next_board.place_stone(self.next_player, move.point)
     else:
       next_board = self.board
-    return GameState(next_board, self.next_player.other, self, move)
+    return GameState(next_board, self.next_player.other, self, move, self.komi)
 
   @classmethod
-  def new_game(cls, board_size: int):
+  def new_game(cls, board_size: int, komi: float):
     board_size = (board_size, board_size)
     board = Board(*board_size)
-    return GameState(board, Player.black, None, None)
+    return GameState(board, Player.black, None, None, komi)
 
   def is_move_self_capture(self, player: Player, move: Move) -> bool:
     if not move.is_play:

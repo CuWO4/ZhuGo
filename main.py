@@ -26,21 +26,23 @@ def create_agent(agent_conf: dict) -> Agent:
   agent = load_class_by_name(agent_conf['class_name'])(**agent_conf['args'])
   return agent
 
-def get_main_json_conf(conf_path: str) -> tuple[Agent, Agent, type]:
+def get_main_json_conf(conf_path: str) -> tuple[tuple[Agent], type, dict]:
+  '''return ((agents), UI Class, game setting dictionary)'''
   with open(conf_path,'r') as config_file:
     config = json.load(config_file)
 
     agent1 = create_agent(config.get('agent1'))
     agent2 = create_agent(config.get('agent2'))
     UIClass = load_class_by_name(config.get('gui'))
+    game_setting = config.get('game')
     
-    return agent1, agent2, UIClass
+    return (agent1, agent2), UIClass, game_setting
     
 def main():
   init.init()
   (conf_path,) = parse_args()
-  agent1, agent2, UIClass = get_main_json_conf(conf_path)
-  ui_game.start_game(agent1, agent2, UIClass)
+  (agent1, agent2), UIClass, game_setting = get_main_json_conf(conf_path)
+  ui_game.start_game(agent1, agent2, UIClass, **game_setting)
 
 if __name__ == '__main__':
   main()

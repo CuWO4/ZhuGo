@@ -7,5 +7,6 @@
     "class_name": "agent.random_agent.RandomAgent",
     "args": {}
   },
-  "gui": "ui.tk_gui.TkGUI"
+  "gui": "ui.tk_gui.TkGUI",
+  "game": {}
 }

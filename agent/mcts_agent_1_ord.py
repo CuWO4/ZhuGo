@@ -105,7 +105,7 @@ class MCTSAgent(Agent):
   def simulate_game(game_state: GameState, indexes: list[int], agent: Agent, pool: multiprocessing.Pool, thread_n: int) -> list[tuple[int, Player]]:
     results = pool.starmap(
       MCTSAgent.simulate_worker,
-      [(GameState(copy.deepcopy(game_state.board), game_state.next_player, None, None), indexes[i], agent) for i in range(thread_n)]
+      [(GameState(copy.deepcopy(game_state.board), game_state.next_player, None, None, game_state.komi), indexes[i], agent) for i in range(thread_n)]
     )
     return results
 
