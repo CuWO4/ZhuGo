@@ -192,11 +192,13 @@ class TkRenderer:
         if visited_time < 5:
           continue
         color_table = [
-          (0.1, '#A93226'), # dark red
-          (0.3, '#E74C3C'), # light red
-          (0.7, '#F4D03F'), # light yellow
-          (0.9, '#58D68D'), # light green
-          (1, '#239B56') # dark green
+          (0.1,  '#A93226'), # dark red
+          (0.3,  '#E74C3C'), # light red
+          (0.45, '#EC7063'), # lighter red
+          (0.55, '#F4D03F'), # yellow
+          (0.7,  '#82E0AA'), # lighter green
+          (0.9,  '#58D68D'), # light green
+          (1,    '#239B56')  # dark green
         ]
         candidate_color = color_table[0][1]
         for upper_bound, color in color_table:
