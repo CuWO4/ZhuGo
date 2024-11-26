@@ -13,11 +13,11 @@ import multiprocessing
 import time
 
 __all__ = [
-  'MCTSAgent'
+  'MCTSAgent1Order'
 ]
 
 
-class MCTSAgent(Agent):
+class MCTSAgent1Order(Agent):
   '''
   Parameters
   ------------------
@@ -104,7 +104,7 @@ class MCTSAgent(Agent):
   @staticmethod
   def simulate_game(game_state: GameState, indexes: list[int], agent: Agent, pool: multiprocessing.Pool, thread_n: int) -> list[tuple[int, Player]]:
     results = pool.starmap(
-      MCTSAgent.simulate_worker,
+      MCTSAgent1Order.simulate_worker,
       [(GameState(copy.deepcopy(game_state.board), game_state.next_player, None, None, game_state.komi), indexes[i], agent) for i in range(thread_n)]
     )
     return results

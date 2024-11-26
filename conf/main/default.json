@@ -4,7 +4,7 @@
     "args": {}
   },
   "agent2": {
-    "class_name": "agent.mcts_agent_1_ord.MCTSAgent",
+    "class_name": "agent.mcts_agent_1_ord.MCTSAgent1Order",
     "args": {}
   },
   "gui": "ui.tk_gui.TkGUI",
