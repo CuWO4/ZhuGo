@@ -1,0 +1,25 @@
+{
+  "agent1": {
+    "class_name": "agent.mcts_agent_1_ord.MCTSAgent1Order",
+    "args": {
+      "analysis_mode": true,
+      "need_move_queue": true,
+
+      "c": 1.0
+    }
+  },
+  "agent2": {
+    "class_name": "agent.mcts_agent_1_ord.MCTSAgent1Order",
+    "args": {
+      "analysis_mode": true,
+      "need_move_queue": true,
+
+      "c": 1.0
+    }
+  },
+  "gui": "ui.tk_gui.TkGUI",
+  "game": {
+    "board_size": 9,
+    "komi": 5.5
+  }
+}
