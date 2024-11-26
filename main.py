@@ -1,11 +1,10 @@
+import init
 import game.ui_game as ui_game
 from agent.base import Agent
 
 import json
 import importlib
 import argparse
-
-import init
 
 def parse_args() -> tuple[str]:
   parser = argparse.ArgumentParser()
@@ -23,12 +22,16 @@ def load_class_by_name(full_class_name: str) -> type:
   cls = getattr(module, class_name)
   return cls
 
+def create_agent(agent_conf: dict) -> Agent:
+  agent = load_class_by_name(agent_conf['class_name'])(**agent_conf['args'])
+  return agent
+
 def get_main_json_conf(conf_path: str) -> tuple[Agent, Agent, type]:
   with open(conf_path,'r') as config_file:
     config = json.load(config_file)
 
-    agent1 = load_class_by_name(config.get('agent1'))()
-    agent2 = load_class_by_name(config.get('agent2'))()
+    agent1 = create_agent(config.get('agent1'))
+    agent2 = create_agent(config.get('agent2'))
     UIClass = load_class_by_name(config.get('gui'))
     
     return agent1, agent2, UIClass

@@ -1,5 +1,11 @@
 {
-  "agent1": "agent.random_agent.RandomAgent",
-  "agent2": "agent.random_agent.RandomAgent",
+  "agent1": {
+    "class_name": "agent.random_agent.RandomAgent",
+    "args": {}
+  },
+  "agent2": {
+    "class_name": "agent.random_agent.RandomAgent",
+    "args": {}
+  },
   "gui": "ui.tk_gui.TkGUI"
 }

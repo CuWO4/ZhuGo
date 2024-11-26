@@ -106,6 +106,7 @@ class Board():
     self.neighbor_table = neighbor_tables[dim]
     self.corner_table = corner_tables[dim]
     
+  @property
   def size(self) -> tuple[int, int]:
     '''return row_n, col_n'''
     return self.num_rows, self.num_cols

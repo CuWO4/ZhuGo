@@ -1,5 +1,11 @@
 {
-  "agent1": "agent.human_agent.HumanAgent",
-  "agent2": "agent.mcts_agent_1_ord.MCTSAgent",
+  "agent1": {
+    "class_name": "agent.human_agent.HumanAgent",
+    "args": {}
+  },
+  "agent2": {
+    "class_name": "agent.mcts_agent_1_ord.MCTSAgent",
+    "args": {}
+  },
   "gui": "ui.tk_gui.TkGUI"
 }

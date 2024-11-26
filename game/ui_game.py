@@ -17,10 +17,8 @@ def start_game(agent1: Agent, agent2: Agent, UIClass: type, board_size: int = 19
   mcts_queue = multiprocessing.Queue()
 
   for agent in (agent1, agent2):
-    if hasattr(agent, 'subscribe_move_queue'):
-      agent.subscribe_move_queue(move_queue)
-    if hasattr(agent, 'subscribe_mcts_queue'):
-      agent.subscribe_mcts_queue(mcts_queue)
+    agent.subscribe_move_queue(move_queue)
+    agent.subscribe_mcts_queue(mcts_queue)
 
   ui: UI = UIClass(move_queue, mcts_queue)
   ui.update(game)

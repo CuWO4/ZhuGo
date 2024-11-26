@@ -10,6 +10,9 @@ __all__ = [
 ]
 
 class RandomAgent(base.Agent):
+  def __init__(self, *, need_move_queue: bool = True, need_mcts_queue: bool = False):
+    super().__init__(need_move_queue=need_move_queue, need_mcts_queue=need_mcts_queue)
+  
   def select_move(self, game_state: goboard.GameState) -> goboard.Move:
     candidates = []
     for move in game_state.legal_moves():
