@@ -195,7 +195,8 @@ class TkRenderer:
           (0.1,  '#A93226'), # dark red
           (0.3,  '#E74C3C'), # light red
           (0.45, '#EC7063'), # lighter red
-          (0.55, '#F4D03F'), # yellow
+          (0.5,  '#F4D03F'), # yellow
+          (0.55, '#9CDFA5'), # even lighter green
           (0.7,  '#82E0AA'), # lighter green
           (0.9,  '#58D68D'), # light green
           (1,    '#239B56')  # dark green
