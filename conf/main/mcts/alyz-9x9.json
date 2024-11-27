@@ -7,7 +7,7 @@
         "analysis_mode": true,
         "need_move_queue": true,
         
-        "c": 1.0,
+        "c": 1.2,
         "max_depth": 8,
         "thread_n": 18
       }
