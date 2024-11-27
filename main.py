@@ -1,5 +1,6 @@
 import init
 import game.ui_game as ui_game
+import game.ui_analysis as ui_analysis
 from agent.base import Agent
 
 import json
@@ -22,27 +23,33 @@ def load_class_by_name(full_class_name: str) -> type:
   cls = getattr(module, class_name)
   return cls
 
-def create_agent(agent_conf: dict) -> Agent:
-  agent = load_class_by_name(agent_conf['class_name'])(**agent_conf['args'])
-  return agent
+def create_agents(agents_confs: list[dict]) -> list[Agent]:
+  agents = []
+  for agent_conf in agents_confs:
+    agent = load_class_by_name(agent_conf['class_name'])(**agent_conf['args'])
+    agents.append(agent)
+  return agents
 
-def get_main_json_conf(conf_path: str) -> tuple[tuple[Agent], type, dict]:
+def get_main_json_conf(conf_path: str) -> tuple[str, list[Agent], type, dict]:
   '''return ((agents), UI Class, game setting dictionary)'''
   with open(conf_path,'r') as config_file:
     config = json.load(config_file)
 
-    agent1 = create_agent(config.get('agent1'))
-    agent2 = create_agent(config.get('agent2'))
+    mode = config.get('mode')
+    agents = create_agents(config.get('agents'))
     UIClass = load_class_by_name(config.get('gui'))
     game_setting = config.get('game')
     
-    return (agent1, agent2), UIClass, game_setting
+    return mode, agents, UIClass, game_setting
     
 def main():
   init.init()
   (conf_path,) = parse_args()
-  (agent1, agent2), UIClass, game_setting = get_main_json_conf(conf_path)
-  ui_game.start_game(agent1, agent2, UIClass, **game_setting)
+  mode, agents, UIClass, game_setting = get_main_json_conf(conf_path)
+  if mode == 'game':
+    ui_game.start_game(*agents, UIClass, **game_setting)
+  elif mode == 'analysis':
+    ui_analysis.start_analysis(*agents, UIClass, **game_setting)
 
 if __name__ == '__main__':
   main()

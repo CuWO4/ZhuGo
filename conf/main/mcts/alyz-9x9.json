@@ -1,13 +1,12 @@
 {
-  "mode": "game",
+  "mode": "analysis",
   "agents": [
-    {
-      "class_name": "agent.human_agent.HumanAgent",
-      "args": {}
-    },
     {
       "class_name": "agent.mcts_agent.MCTSAgent",
       "args": {
+        "analysis_mode": true,
+        "need_move_queue": true,
+        
         "c": 1.0,
         "max_depth": 8,
         "thread_n": 18
@@ -15,5 +14,8 @@
     }
   ],
   "gui": "ui.tk_gui.TkGUI",
-  "game": {}
+  "game": {
+    "board_size": 9,
+    "komi": 5.5
+  }
 }
