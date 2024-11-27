@@ -45,29 +45,34 @@ class MCTSAgent(Agent):
     self.thread_n: int = thread_n
     self.pool = multiprocessing.Pool(thread_n)
     
+    self.root: MCTSNode | None = None
+    
   def select_move(self, game_state: GameState) -> Move:
     turn_start_timestamp = time.time()
 
     board = game_state.board
     
-    root = MCTSNode(self.max_depth - 1, self.thread_n, self.pool, game_state, c=self.c)
+    if self.root is None or not self.root.game_state.is_ancestor_of(game_state, 2):
+      self.root = MCTSNode(self.max_depth - 1, self.thread_n, self.pool, game_state, c=self.c)
+    else:
+      self.switch_branch(game_state - self.root.game_state)
     
     while self.analysis_mode or \
-      ((np.sum(root.visited_times) < self.n0 
-        or self.entropy(root.visited_times) > self.beta * math.log(root.policy_size)) 
+      ((np.sum(self.root.visited_times) < self.n0 
+        or self.entropy(self.root.visited_times) > self.beta * math.log(self.root.policy_size)) 
         and time.time() - turn_start_timestamp < self.max_second):
 
       # multiprocessing need to pickle serialize the object, which is extremely slow
-      root.propagate()
+      self.root.propagate()
       
       self.enqueue_mcts_data(
-        root.win_rate / (root.visited_times + 1e-8), 
-        root.visited_times, 
-        MCTSAgent.best_move_idx(root.win_rate, root.visited_times), 
+        self.root.win_rate / (self.root.visited_times + 1e-8), 
+        self.root.visited_times, 
+        MCTSAgent.best_move_idx(self.root.win_rate, self.root.visited_times), 
         board.size
       )
 
-      print(f'{MCTSAgent.entropy(root.visited_times):.2f} {int(np.sum(root.visited_times))}')
+      print(f'{MCTSAgent.entropy(self.root.visited_times):.2f} {int(np.sum(self.root.visited_times))}')
 
       if self.analysis_mode:
         assert self.move_queue is not None
@@ -77,7 +82,26 @@ class MCTSAgent(Agent):
           return human_move
           
     self.enqueue_empty_mcts_data(board.size)
-    return MCTSAgent.best_move_idx(root.win_rate, root.visited_times)
+    return MCTSAgent.best_move_idx(self.root.win_rate, self.root.visited_times)
+  
+  def switch_branch(self, move_list: list[Move]):
+    assert self.root is not None
+    
+    node: MCTSNode = self.root
+    for move in move_list:
+      move_idx = move_to_idx(move, node.game_state.board.size)
+      if node.branches[move_idx] is None:
+        node.branches[move_idx] = MCTSNode(
+          self.max_depth - 1, 
+          self.thread_n, 
+          self.pool,
+          node.game_state.apply_move(move),
+          c=self.c 
+        )
+      node = node.branches[move_idx]
+      node.depth = self.max_depth - 1
+    
+    self.root = node
   
   @staticmethod
   def calculate_ucb(

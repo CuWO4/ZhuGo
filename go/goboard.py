@@ -236,21 +236,6 @@ class Board():
       return None
     return string
 
-  def __eq__(self, other: object) -> bool:
-    if not isinstance(other, Board):
-      return False
-    
-    if self.num_rows != other.num_rows or self.num_cols != other.num_cols:
-      return False
-    
-    for row in range(1, 1 + self.num_rows):
-      for col in range(1, 1 + self.num_cols):
-        point = Point(row=row, col=col)
-        if self.get(point) != other.get(point):
-          return False
-
-    return True
-  
   def __str__(self) -> str:
     STONE_TO_CHAR = {
       None: '.',
@@ -268,7 +253,7 @@ class Board():
     return isinstance(other, Board) and \
       self.num_rows == other.num_rows and \
       self.num_cols == other.num_cols and \
-      self._hash() == other._hash()
+      self._hash == other._hash
 
   def __deepcopy__(self, memodict={}):
     copied = Board(self.num_rows, self.num_cols)
@@ -425,3 +410,32 @@ class GameState():
     if self.last_move.is_resign:
       return self.next_player
     return self.game_result().winner
+  
+  def is_ancestor_of(self, other, max_n: int) -> bool:
+    if not isinstance(other, GameState):
+      return False
+    
+    if other in self.previous_states:
+      return True
+    
+    state: GameState = other
+    for _ in range(max_n + 1):
+      if state is None:
+        return False
+      if state.board == self.board:
+        return True
+      state = state.previous_state
+
+    return False
+  
+  def __sub__(self, other) -> list[Move]:
+    assert isinstance(other, GameState)
+    
+    move_list = []
+    state = self
+    while state != other and state.board != other.board:
+      move_list = [state.last_move] + move_list
+      state = state.previous_state
+      assert state is not None # triggered if other is not self's ancestor
+
+    return move_list
