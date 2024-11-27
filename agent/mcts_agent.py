@@ -10,6 +10,7 @@ import numpy as np
 import multiprocessing
 import math
 import time
+import datetime
 
 __all__ = [
   'MCTSAgent'
@@ -158,14 +159,6 @@ class MCTSAgent(Agent):
     return - np.sum(distribution * np.log2(distribution))
 
   @staticmethod
-  def simulate_worker(game: GameState, idx: int, agent: Agent) -> tuple[int, Player]:
-    game = game.apply_move(idx_to_move(idx, game.board.size))
-    while not game.is_over():
-      move = agent.select_move(game)
-      game = game.apply_move(move)
-    return (idx, game.winner())
-
-  @staticmethod
   def simulate_game(
     game_state: GameState, 
     indexes: list[int], agent: Agent, 
@@ -173,9 +166,21 @@ class MCTSAgent(Agent):
   ) -> list[tuple[int, Player]]:
     results = pool.starmap(
       MCTSAgent.simulate_worker,
-      [(game_state, indexes[i], agent) for i in range(thread_n)]
+      [(i, game_state, indexes[i], agent) for i in range(thread_n)]
     )
     return results
+
+  @staticmethod
+  def simulate_worker(thread_id: int, game: GameState, move_idx: int, agent: Agent) -> tuple[int, Player]:
+    usec = datetime.datetime.now().microsecond
+    seed = thread_id + int(usec) & 0xFFFF_FFFF
+    np.random.seed(seed)
+
+    game = game.apply_move(idx_to_move(move_idx, game.board.size))
+    while not game.is_over():
+      move = agent.select_move(game)
+      game = game.apply_move(move)
+    return (move_idx, game.winner())
 
 class MCTSNode:
   def __init__(self, depth: int, thread_n: int, pool: multiprocessing.Pool, game_state: GameState, *, c: float):
