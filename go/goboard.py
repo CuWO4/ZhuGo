@@ -273,55 +273,82 @@ class Move():
   """Any action a player can play on a turn.
 
   Exactly one of is_play, is_pass, is_resign will be set.
+  
+  Undo will only be permitted when the game applied with undo move is in privileged mode.
   """
-  def __init__(self, point: Point=None, is_pass: bool=False, is_resign: bool=False):
-    assert (point is not None) ^ is_pass ^ is_resign
+  def __init__(
+    self, 
+    point: Point = None, 
+    is_pass: bool = False, 
+    is_resign: bool = False, 
+    is_undo: bool = False
+  ):
+    assert (point is not None) + is_pass + is_resign + is_undo == 1
     self.point: Point = point
     self.is_play: bool = (self.point is not None)
     self.is_pass: bool = is_pass
     self.is_resign: bool = is_resign
+    self.is_undo: bool = is_undo
 
-  @classmethod
-  def play(cls, point: Point):
+  @staticmethod
+  def play(point: Point):
     """A move that places a stone on the board."""
     return Move(point=point)
 
-  @classmethod
-  def pass_turn(cls):
+  @staticmethod
+  def pass_turn():
     return Move(is_pass=True)
 
-  @classmethod
-  def resign(cls):
+  @staticmethod
+  def resign():
     return Move(is_resign=True)
+
+  @staticmethod
+  def undo():
+    return Move(is_undo=True)
 
   def __str__(self):
     if self.is_pass:
       return 'pass'
-    if self.is_resign:
+    elif self.is_resign:
       return 'resign'
-    return '(r %d, c %d)' % (self.point.row, self.point.col)
+    elif self.is_undo:
+      return 'undo'
+    elif self.is_play:
+      point = self.point
+      return f'(r {point.row}, c {point.col})'
+    assert False
 
   def __hash__(self):
     return hash((
       self.is_play,
       self.is_pass,
       self.is_resign,
-      self.point))
+      self.is_undo,
+      self.point
+    ))
 
   def  __eq__(self, other):
     return (
       self.is_play,
       self.is_pass,
       self.is_resign,
-      self.point) == (
+      self.is_undo,
+      self.point
+    ) == (
       other.is_play,
       other.is_pass,
       other.is_resign,
-      other.point)
+      other.is_undo,
+      other.point
+    )
 
 
 class GameState():
-  def __init__(self, board: Board, next_player: Player, previous_state, last_move: Move, komi: float):
+  def __init__(self, board: Board, next_player: Player, previous_state, last_move: Move, komi: float,
+               *, is_privileged_mode: bool = False):
+    '''only privileged mode is on, undo move is allowed
+    '''
     self.board: Board = board
     self.next_player: Player = next_player
     self.previous_state = previous_state
@@ -334,20 +361,34 @@ class GameState():
         {(previous_state.next_player, previous_state.board.zobrist_hash())})
     self.last_move: Move = last_move
 
+    self.is_privileged_mode: bool = is_privileged_mode
+
   def apply_move(self, move: Move):
     """Return the new GameState after applying the move."""
+    assert not self.is_over()
+    
+    if move.is_undo:
+      assert self.is_privileged_mode
+      return self.previous_state
+    
+    next_board = copy.deepcopy(self.board)
     if move.is_play:
-      next_board = copy.deepcopy(self.board)
       next_board.place_stone(self.next_player, move.point)
-    else:
-      next_board = self.board
-    return GameState(next_board, self.next_player.other, self, move, self.komi)
+      
+    return GameState(
+      next_board, 
+      self.next_player.other, 
+      self, 
+      move, 
+      self.komi, 
+      is_privileged_mode = self.is_privileged_mode
+    )
 
-  @classmethod
-  def new_game(cls, board_size: int, komi: float):
+  @staticmethod
+  def new_game(board_size: int, komi: float, *, is_privileged_mode: bool = False):
     board_size = (board_size, board_size)
     board = Board(*board_size)
-    return GameState(board, Player.black, None, None, komi)
+    return GameState(board, Player.black, None, None, komi, is_privileged_mode = is_privileged_mode)
 
   def is_move_self_capture(self, player: Player, move: Move) -> bool:
     if not move.is_play:
@@ -373,6 +414,8 @@ class GameState():
       return False
     if move.is_pass or move.is_resign:
       return True
+    if move.is_undo:
+      return self.is_privileged_mode
     return (
       self.board.get(move.point) is None and
       not self.is_move_self_capture(self.next_player, move) and
@@ -389,6 +432,7 @@ class GameState():
     return self.last_move.is_pass and second_last_move.is_pass
 
   def legal_moves(self) -> list[Move]:
+    '''not include undo move'''
     moves = []
     for row in range(1, self.board.num_rows + 1):
       for col in range(1, self.board.num_cols + 1):
