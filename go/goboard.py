@@ -385,10 +385,8 @@ class GameState():
     )
 
   @staticmethod
-  def new_game(board_size: int, komi: float, *, is_privileged_mode: bool = False):
-    board_size = (board_size, board_size)
-    board = Board(*board_size)
-    return GameState(board, Player.black, None, None, komi, is_privileged_mode = is_privileged_mode)
+  def new_game(board_size: tuple[int] = (19, 19), komi: float = 7.5, *, is_privileged_mode: bool = False):
+    return GameState(Board(*board_size), Player.black, None, None, komi, is_privileged_mode = is_privileged_mode)
 
   def is_move_self_capture(self, player: Player, move: Move) -> bool:
     if not move.is_play:

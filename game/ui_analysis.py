@@ -6,8 +6,8 @@ from ui.base import UI
 import time
 import multiprocessing
 
-def start_analysis(agent: Agent, UIClass: type, board_size: int = 19, komi: float = 7.5):
-  game = goboard.GameState.new_game(board_size, komi)
+def start_analysis(agent: Agent, UIClass: type, game_settings: dict):
+  game = goboard.GameState.new_game(**game_settings)
 
   move_queue = multiprocessing.Queue()
   mcts_queue = multiprocessing.Queue()
@@ -15,7 +15,7 @@ def start_analysis(agent: Agent, UIClass: type, board_size: int = 19, komi: floa
   agent.subscribe_move_queue(move_queue)
   agent.subscribe_mcts_queue(mcts_queue)
 
-  ui: UI = UIClass(move_queue, mcts_queue, board_size, board_size)
+  ui: UI = UIClass(move_queue, mcts_queue, *game.board.size)
   ui.update(game)
   
   while not game.is_over():

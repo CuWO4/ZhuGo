@@ -8,7 +8,6 @@ __all__ = [
 
 class UI:
   def __init__(self, move_queue: multiprocessing.Queue, mcts_queue: multiprocessing.Queue, row_n: int = 19, col_n: int = 19):
-    assert row_n == col_n
     self.move_queue: multiprocessing.Queue = move_queue
     self.mcts_queue: multiprocessing.Queue = mcts_queue
     self.row_n: int = row_n

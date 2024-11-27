@@ -3,7 +3,6 @@ import ui.base as base
 from ui.utils import MCTSData
 from go.goboard import GameState, Move, Point
 from go.gotypes import Player
-from utils.move_idx_transformer import idx_to_move
 
 import tkinter as tk
 import multiprocessing
@@ -17,12 +16,13 @@ class TkGUI(base.UI):
                move_queue: multiprocessing.Queue,
                mcts_queue: multiprocessing.Queue = None,
                row_n: int = 19, col_n: int = 19):
-    assert row_n == col_n
-
     super().__init__(move_queue, mcts_queue, row_n, col_n)
     self.game_state_queue = multiprocessing.Queue()
 
-    self.renderer_process = multiprocessing.Process(target=TkRenderer, args=(self.game_state_queue, move_queue, mcts_queue, row_n))
+    self.renderer_process = multiprocessing.Process(
+      target=TkRenderer, 
+      args=(self.game_state_queue, move_queue, mcts_queue, row_n, col_n)
+    )
     self.renderer_process.start()
 
   def update(self, game_state: GameState):
@@ -33,7 +33,7 @@ class TkRenderer:
                game_state_queue: multiprocessing.Queue,
                move_queue: multiprocessing.Queue,
                mcts_queue: multiprocessing.Queue,
-               board_size: int,
+               row_n: int, col_n: int,
                cell_size: int=40,
                padding: int=60):
     self.game_state_queue: multiprocessing.Queue = game_state_queue
@@ -43,16 +43,18 @@ class TkRenderer:
     self.cur_mcts_data: MCTSData | None = None
     self.refresh_ms: int = 100
 
-    self.board_size: int = board_size
+    self.row_n: int = row_n
+    self.col_n: int = col_n
     self.cell_size: int = cell_size
     self.padding: int = padding
-    self.windows_size: int = cell_size * (board_size - 1) + 2 * padding
+    self.window_w: int = cell_size * (col_n - 1) + 2 * padding
+    self.window_h: int = cell_size * (row_n - 1) + 2 * padding
     self.root: tk.Tk = tk.Tk()
     self.root.title("ZhuGo")
     self.canvas: tk.Canvas = tk.Canvas(
       self.root,
-      width=self.windows_size,
-      height=self.windows_size,
+      width=self.window_w,
+      height=self.window_h,
       bd=0,
       highlightthickness=0,
       bg="#f5b041"
@@ -61,12 +63,15 @@ class TkRenderer:
 
     self.mouse_hover_pos: tuple[int] | None = None
 
-    # Add buttons for Pass and Resign
+    # Add buttons for Pass, Resign and Undo
     self.pass_turn_button: tk.Button = tk.Button(self.root, text="Pass", command=self.on_pass_turn)
     self.pass_turn_button.pack(side=tk.LEFT, padx=10, pady=10)
 
     self.resign_button: tk.Button = tk.Button(self.root, text="Resign", command=self.on_resign)
     self.resign_button.pack(side=tk.LEFT, padx=10, pady=10)
+    
+    self.undo_button: tk.Button = tk.Button(self.root, text='Undo', command=self.on_undo)
+    self.undo_button.pack(side=tk.LEFT, padx=10, pady=10)
 
     self.canvas.bind("<Button-1>", self.on_click)
     self.canvas.bind("<Motion>", self.on_mouse_move)
@@ -105,21 +110,22 @@ class TkRenderer:
     self.draw_message()
 
   def draw_lines(self):
-    for x in range(self.board_size):
+    for x in range(self.row_n):
       # horizontal lines
       self.canvas.create_line(
         self.padding,
         self.padding + x * self.cell_size,
-        self.padding + (self.board_size - 1) * self.cell_size,
+        self.padding + self.window_w - 2 * self.padding,
         self.padding + x * self.cell_size,
         fill="black"
       )
+    for x in range(self.col_n):
       # vertical lines
       self.canvas.create_line(
         self.padding + x * self.cell_size,
         self.padding,
         self.padding + x * self.cell_size,
-        self.padding + (self.board_size - 1) * self.cell_size,
+        self.padding + self.window_h - 2 * self.padding,
         fill="black"
       )
 
@@ -135,11 +141,11 @@ class TkRenderer:
       )
 
   def get_star_positions(self):
-    if self.board_size == 19:
+    if self.row_n == self.col_n == 19:
       points = [3, 9, 15]
-    elif self.board_size == 13:
+    elif self.row_n == self.col_n == 13:
       points = [3, 6, 9]
-    elif self.board_size == 9:
+    elif self.row_n == self.col_n == 9:
       points = [2, 4, 6]
     else:
       return []  # non-standard
@@ -160,8 +166,8 @@ class TkRenderer:
     )
 
   def draw_pieces(self):
-    for x in range(self.board_size):
-      for y in range(self.board_size):
+    for x in range(self.col_n):
+      for y in range(self.row_n):
         stone = self.cur_game_state.board.get(Point(row = y + 1, col= x + 1))
         if stone == Player.black:
           self.draw_piece(x, y, "black")
@@ -186,8 +192,8 @@ class TkRenderer:
       best_move_y, best_move_x = best_move_pos
       self.draw_piece(best_move_x, best_move_y, '#186A3B', expand=3)
     
-    for x in range(self.board_size):
-      for y in range(self.board_size):
+    for x in range(self.col_n):
+      for y in range(self.row_n):
         q, visited_time = self.cur_mcts_data.get(row=y, col=x)
         if visited_time < 5:
           continue
@@ -219,14 +225,14 @@ class TkRenderer:
       game_result = self.cur_game_state.game_result()
       message = f'{winner} wins  {game_result}'
       self.canvas.create_text(
-        self.windows_size / 2, self.windows_size / 2,
-        text=message, font=("Arial", 60), fill="red"
+        self.window_w / 2, self.padding / 2,
+        text=message, font=("Arial", 20), fill="red"
       )
 
   def on_mouse_move(self, event: tk.Event):
     x = round((event.x - self.padding) / self.cell_size)
     y = round((event.y - self.padding) / self.cell_size)
-    if 0 <= x < self.board_size and 0 <= y < self.board_size:
+    if 0 <= x < self.col_n and 0 <= y < self.row_n:
       if self.mouse_hover_pos != (x, y):
         self.mouse_hover_pos = (x, y)
         self.draw_board()
@@ -239,7 +245,7 @@ class TkRenderer:
   def on_click(self, event: tk.Event):
     x = round((event.x - self.padding) / self.cell_size)
     y = round((event.y - self.padding) / self.cell_size)
-    if 0 <= x < self.board_size and 0 <= y < self.board_size:
+    if 0 <= x < self.col_n and 0 <= y < self.row_n:
       move = Move.play(Point(row = y + 1, col = x + 1))
       base.UI.enqueue_move(self.move_queue, move)
 
@@ -251,3 +257,6 @@ class TkRenderer:
     move = Move.resign()
     base.UI.enqueue_move(self.move_queue, move)
 
+  def on_undo(self):
+    move = Move.undo()
+    base.UI.enqueue_move(self.move_queue, move)

@@ -38,18 +38,18 @@ def get_main_json_conf(conf_path: str) -> tuple[str, list[Agent], type, dict]:
     mode = config.get('mode')
     agents = create_agents(config.get('agents'))
     UIClass = load_class_by_name(config.get('gui'))
-    game_setting = config.get('game')
+    game_settings = config.get('game')
     
-    return mode, agents, UIClass, game_setting
+    return mode, agents, UIClass, game_settings
     
 def main():
   init.init()
   (conf_path,) = parse_args()
-  mode, agents, UIClass, game_setting = get_main_json_conf(conf_path)
+  mode, agents, UIClass, game_settings = get_main_json_conf(conf_path)
   if mode == 'game':
-    ui_game.start_game(*agents, UIClass, **game_setting)
+    ui_game.start_game(*agents, UIClass, game_settings)
   elif mode == 'analysis':
-    ui_analysis.start_analysis(*agents, UIClass, **game_setting)
+    ui_analysis.start_analysis(*agents, UIClass, game_settings)
 
 if __name__ == '__main__':
   main()
