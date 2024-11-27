@@ -1,22 +1,24 @@
 {
   "agent1": {
-    "class_name": "agent.mcts_agent_1_ord.MCTSAgent1Order",
+    "class_name": "agent.mcts_agent.MCTSAgent",
     "args": {
       "analysis_mode": true,
       "need_move_queue": true,
 
       "c": 1.0,
-      "thread_n": 16
+      "max_depth": 8,
+      "thread_n": 18
     }
   },
   "agent2": {
-    "class_name": "agent.mcts_agent_1_ord.MCTSAgent1Order",
+    "class_name": "agent.mcts_agent.MCTSAgent",
     "args": {
       "analysis_mode": true,
       "need_move_queue": true,
       
       "c": 1.0,
-      "thread_n": 16
+      "max_depth": 8,
+      "thread_n": 18
     }
   },
   "gui": "ui.tk_gui.TkGUI",

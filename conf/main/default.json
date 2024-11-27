@@ -4,8 +4,12 @@
     "args": {}
   },
   "agent2": {
-    "class_name": "agent.mcts_agent_1_ord.MCTSAgent1Order",
-    "args": {}
+    "class_name": "agent.mcts_agent.MCTSAgent",
+    "args": {
+      "c": 1.0,
+      "max_depth": 8,
+      "thread_n": 18
+    }
   },
   "gui": "ui.tk_gui.TkGUI",
   "game": {}
