@@ -72,7 +72,7 @@ class MCTSAgent(Agent):
         board.size
       )
 
-      print(f'{MCTSAgent.entropy(self.root.visited_times):.2f} {int(np.sum(self.root.visited_times))}')
+      self.print_statics_to_cmd(turn_start_timestamp)
 
       if self.analysis_mode:
         assert self.move_queue is not None
@@ -83,6 +83,20 @@ class MCTSAgent(Agent):
           
     self.enqueue_empty_mcts_data(board.size)
     return MCTSAgent.best_move_idx(self.root.win_rate, self.root.visited_times)
+  
+  def print_statics_to_cmd(self, turn_start_timestamp: int):
+    entropy = MCTSAgent.entropy(self.root.visited_times)
+    visited_times_sum = int(np.sum(self.root.visited_times))
+    time_cost_sec = int(time.time() - turn_start_timestamp)
+    time_cost_min = time_cost_sec // 60
+    time_cost_sec %= 60
+    time_cost_str = f'{time_cost_min:>2} min {time_cost_sec:>2} s'
+    
+    print('\033[?25l', end='', flush=False) # hide cursor
+    print(f'{"entropy":>15}{"calculations":>15}{"time cost":>15}\n', end='', flush=False)
+    print(f'{entropy:>15.2f}{visited_times_sum:>15d}{time_cost_str:>15}', end='', flush=True)
+    print('\033[F\r', end='', flush=False) # set cursor position
+
   
   def switch_branch(self, move_list: list[Move]):
     assert self.root is not None
