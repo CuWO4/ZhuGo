@@ -35,7 +35,8 @@ class MCTSAgent(Agent):
     simulate thread counts
   '''
   def __init__(self, *, analysis_mode: bool = False,
-               max_depth: int = 8, c: float = 1.0, n0: int = 500, beta: float = 0.3, max_second: int = 120, thread_n: int = 10,
+               max_depth: int = 8, c: float = 1.0, n0: int = 500, beta: float = 0.3, 
+               max_second: int = 120, thread_n: int = 10,
                need_move_queue: bool = False, need_mcts_queue: bool = True):
     super().__init__(need_move_queue=need_move_queue, need_mcts_queue=need_mcts_queue)
     self.analysis_mode: bool = analysis_mode
@@ -142,7 +143,8 @@ class MCTSAgent(Agent):
     return - np.sum(distribution * np.log2(distribution))
 
 class MCTSNode:
-  def __init__(self, depth: int, thread_n: int, pool: multiprocessing.Pool, game_state: GameState, *, c: float):
+  def __init__(self, depth: int, thread_n: int, pool: multiprocessing.Pool, game_state: GameState, 
+               *, c: float):
     self.game_state: GameState = game_state
 
     self.depth = depth
@@ -185,7 +187,13 @@ class MCTSNode:
 
     if self.depth == 0:
       indexes = MCTSAgent.exploring_move_indexes(self.ucb, self.thread_n)
-      results: list[tuple[int, GameResult]] = MCTSNode.simulate_game(self.game_state, indexes, RandomAgent(), self.pool, self.thread_n)
+      results: list[tuple[int, GameResult]] = MCTSNode.simulate_game(
+        self.game_state, 
+        indexes, 
+        RandomAgent(), 
+        self.pool, 
+        self.thread_n
+      )
 
       game_results = []
 
@@ -203,7 +211,13 @@ class MCTSNode:
         
       if not self.branches[move_idx]:
         move = idx_to_move(move_idx, self.game_state.board.size)
-        self.branches[move_idx] = MCTSNode(self.depth - 1, self.thread_n, self.pool, self.game_state.apply_move(move), c=self.c)
+        self.branches[move_idx] = MCTSNode(
+          self.depth - 1, 
+          self.thread_n, 
+          self.pool, 
+          self.game_state.apply_move(move), 
+          c=self.c
+        )
 
       game_results = self.branches[move_idx].propagate()
 
@@ -225,19 +239,23 @@ class MCTSNode:
     if not self.__is_q_dirty:
       return self.__q_cache
     
-    min_empty = lambda list: min(list) if list else 1e5
-    max_empty = lambda list: max(list) if list else -1e5
-    # [0, 1] -> [0, 1]  amplify the gradient changes near 1 and 0
-    activate_f = lambda arr: np.sinh(5 * (arr - 0.5)) / 12 + 0.5
-    sigmoid = lambda arr: 1 / (1 + np.exp(-arr))
+    def activate(arr: np.ndarray, scale: float = 2):
+      arr = arr.clip(-scale, scale)
+      arr = np.arcsin(arr / scale) / math.pi + 0.5
+      return arr
     
-    min_margin = min([min_empty(subarr) for subarr in self.move_winning_margins])
-    max_margin = max([max_empty(subarr) for subarr in self.move_winning_margins])
+    def sigmoid(arr: np.ndarray):
+      return 1 / (1 + np.exp(-arr))
     
-    if max_margin - min_margin <= 0:
+    all_margin = np.array(sum(self.move_winning_margins, start = []))
+
+    if len(all_margin) < 2:
       self.__q_cache.fill(0.5)
       self.__is_q_dirty = False
       return self.__q_cache
+    
+    average = np.mean(all_margin)
+    deviation = np.std(all_margin)
 
     for idx, subarr in enumerate(self.move_winning_margins):
       if not subarr:
@@ -245,10 +263,11 @@ class MCTSNode:
         continue
       
       subarr_np = np.array(subarr)
-      subarr_np = activate_f((subarr_np - min_margin) / (max_margin - min_margin))
+      subarr_np = (subarr_np - average) / deviation
+      subarr_np = activate(subarr_np)
       self.__q_cache[idx] = np.mean(subarr_np)
     self.__q_cache = sigmoid(15 * (self.__q_cache - 0.5))
-        
+
     self.__is_q_dirty = False
     return self.__q_cache
 
@@ -267,7 +286,8 @@ class MCTSNode:
     if not self.__is_ucb_dirty:
       return self.__ucb_cache
 
-    self.__ucb_cache = self.q + self.c * np.sqrt(np.log(1 + np.sum(self.visited_times)) / (1 + self.visited_times))
+    self.__ucb_cache = self.q + self.c * np.sqrt(
+      np.log(1 + np.sum(self.visited_times)) / (1 + self.visited_times))
     self.__ucb_cache += self.legal_mask
     return self.__ucb_cache
   
@@ -284,7 +304,8 @@ class MCTSNode:
     return results
 
   @staticmethod
-  def simulate_worker(thread_id: int, game: GameState, move_idx: int, agent: Agent) -> tuple[int, GameResult]:
+  def simulate_worker(thread_id: int, game: GameState, move_idx: int, agent: Agent) \
+    -> tuple[int, GameResult]:
     usec = datetime.datetime.now().microsecond
     seed = thread_id + int(usec) & 0xFFFF_FFFF
     np.random.seed(seed)
