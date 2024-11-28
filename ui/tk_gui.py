@@ -203,9 +203,9 @@ class TkRenderer:
           (0.45, '#EC7063'), # lighter red
           (0.5,  '#F4D03F'), # yellow
           (0.55, '#9CDFA5'), # even lighter green
-          (0.7,  '#82E0AA'), # lighter green
-          (0.9,  '#58D68D'), # light green
-          (1,    '#239B56')  # dark green
+          (0.7,  '#58D68D'), # lighter green
+          (0.9,  '#239B56'), # light green
+          (1,    '#186A3B')  # dark green
         ]
         candidate_color = color_table[0][1]
         for upper_bound, color in color_table:
