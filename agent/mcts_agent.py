@@ -121,17 +121,27 @@ class MCTSAgent(Agent):
     self.root = node
 
   @staticmethod
-  def exploring_move_indexes(ucb: list[float], size: int) -> list[int]:
-    max_ucb_indexes = np.argwhere(ucb == np.max(ucb)).flatten()
-    move_indexes = np.random.choice(max_ucb_indexes, size=size)
+  def exploring_move_indexes(ucb: np.ndarray[float], size: int) -> list[int]:
+    max_ucb_indexes = np.argwhere(ucb >= np.max(ucb) - 1e-3).flatten()
+    
+    if len(max_ucb_indexes) == 0:
+      print(f'{max_ucb_indexes=}')
+      assert len(max_ucb_indexes)
+      
+    move_indexes = np.random.choice(max_ucb_indexes, size=size, replace=True)
     return move_indexes
 
   @staticmethod
   def best_move_idx(
-    visited_times: np.ndarray,
+    visited_times: np.ndarray[int],
     q: np.ndarray
   ) -> int:
     max_visited_indexes = np.argwhere(visited_times == np.max(visited_times)).flatten()
+
+    if len(max_visited_indexes) == 0:
+      print(f'{max_visited_indexes=}')
+      assert len(max_visited_indexes)
+
     max_q_idx_in_max_visited = np.argmax(q[max_visited_indexes])
     max_idx = max_visited_indexes[max_q_idx_in_max_visited]
     return max_idx
@@ -141,7 +151,7 @@ class MCTSAgent(Agent):
     '''array do not need to be normalized'''
     distribution = (array + 1e-8) / np.sum(array + 1e-8)
     return - np.sum(distribution * np.log2(distribution))
-
+  
 class MCTSNode:
   def __init__(self, depth: int, thread_n: int, pool: multiprocessing.Pool, game_state: GameState, 
                *, c: float):
@@ -235,12 +245,12 @@ class MCTSNode:
     )
 
   @property
-  def q(self) -> np.ndarray:
+  def q(self) -> np.ndarray[float]:
     if not self.__is_q_dirty:
       return self.__q_cache
     
     def activate(arr: np.ndarray, scale: float = 2):
-      arr = arr.clip(-scale, scale)
+      arr = arr.clip(-scale + 1e-5, scale - 1e-5)
       arr = np.arcsin(arr / scale) / math.pi + 0.5
       return arr
     
@@ -272,17 +282,17 @@ class MCTSNode:
     return self.__q_cache
 
   @property
-  def visited_times(self) -> np.ndarray:
+  def visited_times(self) -> np.ndarray[int]:
     if not self.__is_visited_times_dirty:
       return self.__visited_times_cache
     
     for idx, subarr in enumerate(self.move_winning_margins):
-      self.__visited_times_cache[idx] = len(subarr) / self.thread_n
+      self.__visited_times_cache[idx] = len(subarr) // self.thread_n
     self.__is_visited_times_dirty = False
     return self.__visited_times_cache
 
   @property
-  def ucb(self) -> np.ndarray:
+  def ucb(self) -> np.ndarray[float]:
     if not self.__is_ucb_dirty:
       return self.__ucb_cache
 
