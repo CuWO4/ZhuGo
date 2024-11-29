@@ -2,7 +2,6 @@ from agent.base import Agent
 from go.goboard import GameState, Move
 
 import time
-import multiprocessing
 
 __all__ = [
   'HumanAgent'

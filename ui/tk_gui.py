@@ -1,6 +1,6 @@
-import ui.base as base
+from .base import UI
 
-from ui.utils import MCTSData
+from utils.mcts_data import MCTSData
 from go.goboard import GameState, Move, Point
 from go.gotypes import Player
 
@@ -11,7 +11,7 @@ __all__ = [
   'TkGUI'
 ]
 
-class TkGUI(base.UI):
+class TkGUI(UI):
   def __init__(self,
                move_queue: multiprocessing.Queue,
                mcts_queue: multiprocessing.Queue = None,
@@ -247,16 +247,16 @@ class TkRenderer:
     y = round((event.y - self.padding) / self.cell_size)
     if 0 <= x < self.col_n and 0 <= y < self.row_n:
       move = Move.play(Point(row = y + 1, col = x + 1))
-      base.UI.enqueue_move(self.move_queue, move)
+      UI.enqueue_move(self.move_queue, move)
 
   def on_pass_turn(self):
     move = Move.pass_turn()
-    base.UI.enqueue_move(self.move_queue, move)
+    UI.enqueue_move(self.move_queue, move)
 
   def on_resign(self):
     move = Move.resign()
-    base.UI.enqueue_move(self.move_queue, move)
+    UI.enqueue_move(self.move_queue, move)
 
   def on_undo(self):
     move = Move.undo()
-    base.UI.enqueue_move(self.move_queue, move)
+    UI.enqueue_move(self.move_queue, move)

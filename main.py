@@ -2,9 +2,9 @@ import init
 import game.ui_game as ui_game
 import game.ui_analysis as ui_analysis
 from agent.base import Agent
+from utils.load_class_by_name import load_class_by_name
 
 import json
-import importlib
 import argparse
 
 def parse_args() -> tuple[str]:
@@ -16,12 +16,6 @@ def parse_args() -> tuple[str]:
   args = parser.parse_args()
   
   return (args.conf,)
-
-def load_class_by_name(full_class_name: str) -> type:
-  module_name, class_name = full_class_name.rsplit('.', 1)
-  module = importlib.import_module(module_name)
-  cls = getattr(module, class_name)
-  return cls
 
 def create_agents(agents_confs: list[dict]) -> list[Agent]:
   agents = []

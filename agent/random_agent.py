@@ -1,7 +1,7 @@
-import agent.base as base
+from .base import Agent
 
 import go.goboard as goboard
-from agent.helpers import is_point_an_eye
+from utils.eye_identifier import is_point_an_eye
 
 import random
 
@@ -9,7 +9,7 @@ __all__ = [
   'RandomAgent'
 ]
 
-class RandomAgent(base.Agent):
+class RandomAgent(Agent):
   def __init__(self, *, need_move_queue: bool = True, need_mcts_queue: bool = False):
     super().__init__(need_move_queue=need_move_queue, need_mcts_queue=need_mcts_queue)
   

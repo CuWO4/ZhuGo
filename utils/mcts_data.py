@@ -1,6 +1,6 @@
 from go.goboard import Move
 from go.goboard import Point
-from utils.move_idx_transformer import move_to_idx, idx_to_move
+from .move_idx_transformer import move_to_idx, idx_to_move
 
 __all__ = [
   'MCTSData'

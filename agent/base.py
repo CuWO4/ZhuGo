@@ -1,5 +1,5 @@
 from go.goboard import GameState, Move
-from ui.utils import MCTSData
+from utils.mcts_data import MCTSData
 
 import multiprocessing
 
