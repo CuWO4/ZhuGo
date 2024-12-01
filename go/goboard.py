@@ -369,7 +369,10 @@ class GameState():
     
     if move.is_undo:
       assert self.is_privileged_mode
-      return self.previous_state
+      if self.previous_state is not None:
+        return self.previous_state 
+      else:
+        return self
     
     next_board = copy.deepcopy(self.board)
     if move.is_play:
