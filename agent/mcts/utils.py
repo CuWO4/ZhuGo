@@ -11,10 +11,10 @@ __all__ = [
 ]
 
 def exploring_move_indexes(ucb: np.ndarray[float], size: int) -> list[int]:
-  max_ucb_indexes = np.argwhere(ucb >= np.max(ucb) - 1e-3).flatten()
+  max_ucb_indexes = np.argwhere(ucb == np.max(ucb)).flatten()
   
   if len(max_ucb_indexes) == 0:
-    print(f'{max_ucb_indexes=}')
+    print(f'{ucb=}')
     assert len(max_ucb_indexes)
     
   move_indexes = np.random.choice(max_ucb_indexes, size=size, replace=True)
@@ -27,7 +27,7 @@ def best_move_idx(
   max_visited_indexes = np.argwhere(visited_times == np.max(visited_times)).flatten()
 
   if len(max_visited_indexes) == 0:
-    print(f'{max_visited_indexes=}')
+    print(f'{visited_times=}')
     assert len(max_visited_indexes)
 
   max_q_idx_in_max_visited = np.argmax(q[max_visited_indexes])

@@ -120,6 +120,11 @@ class RandomNode(Node):
 
     average = np.mean(all_margin)
     deviation = np.std(all_margin)
+    
+    if deviation == 0:
+      self.__q_cache.fill(0.5)
+      self.__is_q_dirty = False
+      return self.__q_cache
 
     for idx, subarr in enumerate(self.move_winning_margins):
       if not subarr:
