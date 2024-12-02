@@ -64,18 +64,20 @@ class TkRenderer:
     self.mouse_hover_pos: tuple[int] | None = None
 
     # Add buttons for Pass, Resign and Undo
-    self.pass_turn_button: tk.Button = tk.Button(self.root, text="Pass", command=self.on_pass_turn)
+    self.pass_turn_button: tk.Button = tk.Button(self.root, text="Pass", command=self.on_pass_turn_button)
     self.pass_turn_button.pack(side=tk.LEFT, padx=10, pady=10)
 
-    self.resign_button: tk.Button = tk.Button(self.root, text="Resign", command=self.on_resign)
+    self.resign_button: tk.Button = tk.Button(self.root, text="Resign", command=self.on_resign_button)
     self.resign_button.pack(side=tk.LEFT, padx=10, pady=10)
     
-    self.undo_button: tk.Button = tk.Button(self.root, text='Undo', command=self.on_undo)
+    self.undo_button: tk.Button = tk.Button(self.root, text='Undo', command=self.on_undo_botton)
     self.undo_button.pack(side=tk.LEFT, padx=10, pady=10)
 
     self.canvas.bind("<Button-1>", self.on_click)
     self.canvas.bind("<Motion>", self.on_mouse_move)
     self.canvas.bind("<Leave>", self.on_mouse_leave)
+    self.root.bind("<Control-z>", self.on_ctrl_z)
+    self.root.bind("<Tab>", self.on_tab)
 
     def check_queue():
       while not self.game_state_queue.empty():
@@ -97,6 +99,8 @@ class TkRenderer:
 
     self.canvas.delete("all")
 
+    self.draw_cur_player()
+
     self.draw_lines()
 
     self.draw_star_points()
@@ -108,6 +112,16 @@ class TkRenderer:
     self.draw_mcts_state()
 
     self.draw_message()
+
+  def draw_cur_player(self):
+    color = 'black' if self.cur_game_state.next_player == Player.black else 'white'
+    radius = self.padding / 3
+    cx = self.window_w / 2
+    cy = self.window_h - self.padding / 2
+    self.canvas.create_oval(
+      cx - radius, cy - radius, cx + radius, cy + radius,
+      fill=color, outline=color
+    )
 
   def draw_lines(self):
     for x in range(self.row_n):
@@ -246,17 +260,40 @@ class TkRenderer:
     x = round((event.x - self.padding) / self.cell_size)
     y = round((event.y - self.padding) / self.cell_size)
     if 0 <= x < self.col_n and 0 <= y < self.row_n:
-      move = Move.play(Point(row = y + 1, col = x + 1))
-      UI.enqueue_move(self.move_queue, move)
+      self.push_play(y + 1, x + 1)
 
-  def on_pass_turn(self):
+  def on_pass_turn_button(self):
+    self.push_pass_turn()
+
+  def on_resign_button(self):
+    self.push_resign()
+
+  def on_undo_botton(self):
+    self.push_undo()
+    
+  def on_tab(self, event: tk.Event):
+    self.push_pass_turn()
+    
+  def on_ctrl_z(self, event: tk.Event):
+    self.push_undo()
+    
+  def push_play(self, row, col):
+    '''indexing starts from 1'''
+    assert self.move_queue is not None
+    move = Move.play(Point(row=row, col=col))
+    UI.enqueue_move(self.move_queue, move)
+
+  def push_pass_turn(self):
+    assert self.move_queue is not None
     move = Move.pass_turn()
     UI.enqueue_move(self.move_queue, move)
-
-  def on_resign(self):
+    
+  def push_resign(self):
+    assert self.move_queue is not None
     move = Move.resign()
     UI.enqueue_move(self.move_queue, move)
-
-  def on_undo(self):
+    
+  def push_undo(self):
+    assert self.move_queue is not None
     move = Move.undo()
     UI.enqueue_move(self.move_queue, move)
