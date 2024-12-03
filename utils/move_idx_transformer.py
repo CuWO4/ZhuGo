@@ -21,6 +21,17 @@ def move_to_idx(move: Move, size: tuple[int, int]) -> int:
   return idx
 
 def idx_to_move(idx: int, size: tuple[int, int]) -> Move:
+  row_n, col_n = size
+  assert 0 <= idx < row_n * col_n + 2
+  if idx >= row_n * col_n + 1:
+    return Move.resign()
+  elif idx >= row_n * col_n:
+    return Move.pass_turn()
+  else:
+    return Move.play(Point(row = idx // col_n + 1, col = idx % col_n + 1))
+  
+
+def test() -> None:
   '''
   >>> move_to_idx(idx_to_move(0, (19, 19)), (19, 19)) == 0 \
   and move_to_idx(idx_to_move(360, (19, 19)), (19, 19)) == 360 \
@@ -31,11 +42,4 @@ def idx_to_move(idx: int, size: tuple[int, int]) -> Move:
   and move_to_idx(idx_to_move(265, (17, 19)), (17, 19)) == 265
   True
   '''
-  row_n, col_n = size
-  assert 0 <= idx < row_n * col_n + 2
-  if idx >= row_n * col_n + 1:
-    return Move.resign()
-  elif idx >= row_n * col_n:
-    return Move.pass_turn()
-  else:
-    return Move.play(Point(row = idx // col_n + 1, col = idx % col_n + 1))
+  
