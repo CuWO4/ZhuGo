@@ -11,12 +11,12 @@ __all__ = [
 ]
 
 class ArgmaxDecoder(Decoder):
-  def __init__(self, size: tuple[int, int]) -> None:
-    super().__init__(size)
+  def __init__(self, size: tuple[int, int], *, device: str = 'cuda' if torch.cuda.is_available() else 'cpu') -> None:
+    super().__init__(size, device=device)
 
   def decoder(self, policy_tensor: torch.Tensor) -> Move:
-    policy_tensor = policy_tensor.cpu()
-
+    policy_tensor = policy_tensor.to(device=self.device)
+    
     assert policy_tensor.size() == self.size
 
     row, col = torch.unravel_index(torch.argmax(policy_tensor), policy_tensor.size())
