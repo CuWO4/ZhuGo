@@ -42,11 +42,11 @@ def analyze_gostring(board: Board, point: Point) -> tuple[bool, int, set[Point]]
     tuple: (bool, int, set). Indicates whether the string would be captured,
            the number of moves to escape/capture, and the escaping path.
   """
+  assert board.is_on_grid(point)
 
   current_string: GoString = board.get_go_string(point)
 
-  if current_string is None: # captured
-    return True, 0, set()
+  assert current_string is not None
 
   if current_string.num_liberties > 1: # not captured
     return False, 0, set()
@@ -69,6 +69,9 @@ def analyze_gostring(board: Board, point: Point) -> tuple[bool, int, set[Point]]
 
   if new_string.num_liberties > 2:
     return False, 0, set()  # escaped
+  
+  if new_string.num_liberties <= 1:
+    return True, 1, set([escape_point])
 
   chasing_candidates = [
     point for point in escape_point.neighbors()
@@ -114,6 +117,8 @@ def analyze_gostring(board: Board, point: Point) -> tuple[bool, int, set[Point]]
 
   return is_captured, escape_steps, escape_path
 
+# For complex situations, each analysis takes about 5ms, and multiprocessing has not been able yet. 
+# It is not a performance hotspot for the time being, so more complex optimizations are not considered.
 def analyze_ladder(board: Board, threshold: int = 4) -> LadderAnalysis:
   """Analyze the board for ladder situations and return analysis.
 
