@@ -13,18 +13,22 @@ class LadderAnalysis:
   def is_stone_trapped_for_ladder(self, stone: Point) -> bool:
     return stone in self.__trapped_stones
   def is_stone_on_laddering_path(self, stone: Point) -> bool:
-    return stone in self.__laddering_path
+    return stone in self.__escape_paths
+  def trapped_stones(self) -> set[Point]:
+    return self.__trapped_stones
+  def escape_paths(self) -> set[Point]:
+    return self.__escape_paths
 
   # private
   def __init__(self) -> None:
     self.__trapped_stones: set[Point] = set()
-    self.__laddering_path: set[Point] =set()
+    self.__escape_paths: set[Point] =set()
 
   # visible in module
   def _mark_stones_as_trapped(self, stones: set[Point]):
     self.__trapped_stones.update(stones)
-  def _mark_escape_path(self, stones: set[Point]):
-    self.__laddering_path.update(stones)
+  def _mark_escape_paths(self, stones: set[Point]):
+    self.__escape_paths.update(stones)
 
 
 def analyze_gostring(board: Board, point: Point) -> tuple[bool, int, set[Point]]:
@@ -68,14 +72,18 @@ def analyze_gostring(board: Board, point: Point) -> tuple[bool, int, set[Point]]
 
   chasing_candidates = [
     point for point in escape_point.neighbors()
-    if board.is_on_grid(point) 
-       and board.get(point) is None 
+    if board.is_on_grid(point)
+       and board.get(point) is None
        and not board.is_self_capture(chasing_player, point)
   ]
-  
+
   if chasing_candidates == []:
     return False, 0, set()
-  
+
+  is_captured = False
+  escape_steps = 0
+  escape_path = set()
+
   for chasing_point in chasing_candidates:
     after_chasing_board = copy.deepcopy(after_escape_board)
     after_chasing_board.place_stone(chasing_player, chasing_point)
@@ -86,51 +94,53 @@ def analyze_gostring(board: Board, point: Point) -> tuple[bool, int, set[Point]]
         continue
 
       neighbor_string = after_chasing_board.get_go_string(neighbor)
-      
+
       if neighbor_string is None or neighbor_string.color == escaping_player:
         continue
-      
+
       if neighbor_string.num_liberties <= 1: # escaped
         no_opponents_string_less_than_2_qi = False
         break
-      
+
     if not no_opponents_string_less_than_2_qi: # escaped
       continue
-    
-    is_captured, escape_steps, escape_path = analyze_gostring(after_chasing_board, escape_point)
-    
-    if is_captured: # captured
-      return True, escape_steps + 1, escape_path | set([escape_point])
-    
-  return False, 0, set()  
-  
+
+    sub_is_captured, sub_escape_steps, sub_escape_path = analyze_gostring(after_chasing_board, escape_point)
+
+    if sub_is_captured: # captured
+      is_captured = True
+      escape_steps = max(escape_steps, sub_escape_steps + 1)
+      escape_path |= sub_escape_path | set([escape_point])
+
+  return is_captured, escape_steps, escape_path
+
 def analyze_ladder(board: Board, threshold: int = 4) -> LadderAnalysis:
   """Analyze the board for ladder situations and return analysis.
-  
+
   Args:
     board (Board): The current board.
     threshold (int): The minimum number of escape moves to consider.
-  
+
   Returns:
     LadderAnalysis: The analysis results.
   """
-  
+
   ladder_analysis = LadderAnalysis()
   visited_points: set[Point] = set()
-  
+
   for point in [Point(row + 1, col + 1) for row in range(board.num_rows) for col in range(board.num_cols)]:
     if point in visited_points or board.get_go_string(point) is None:
       continue
-    
+
     is_captured, escape_steps, escape_path = analyze_gostring(board, point)
-    
+
     if is_captured and escape_steps > threshold:
       trapped_points = board.get_go_string(point).stones
       ladder_analysis._mark_stones_as_trapped(trapped_points)
-      ladder_analysis._mark_escape_path(escape_path)
-      
+      ladder_analysis._mark_escape_paths(escape_path)
+
     visited_points |= board.get_go_string(point).stones
-  
+
   return ladder_analysis
 
 
@@ -151,5 +161,5 @@ def ladder_analysis_to_mcts_data(ladder_analysis: LadderAnalysis, size: tuple[in
     if ladder_analysis.is_stone_trapped_for_ladder(point):
       q[move_to_idx(Move.play(point), size)] = 0
       visited_times[move_to_idx(Move.play(point), size)] = 100
-      
+
   return MCTSData(q, visited_times, None, size)
