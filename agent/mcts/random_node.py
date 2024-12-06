@@ -46,7 +46,7 @@ class RandomNode(Node):
       results: list[tuple[int, GameResult]] = RandomNode.simulate_game(
         self.game_state,
         indexes,
-        RandomAgent(),
+        RandomAgent,
         self.pool
       )
 
@@ -65,9 +65,15 @@ class RandomNode(Node):
         move_idx = move_to_idx(Move.pass_turn(), self.game_state.board.size)
 
       move = idx_to_move(move_idx, self.game_state.board.size)
-      branch = self.branch(move)
+      if self.branches[move_idx] is None:
+        self.branches[move_idx] = RandomNode(
+          game_state=self.game_state.apply_move(move),
+          pool=self.pool,
+          c=self.c,
+          depth=self.depth - 1,
+        )
 
-      game_results = branch.propagate()
+      game_results = self.branches[move_idx].propagate()
 
       for game_result in game_results:
         self.analyze_game_result(move_idx, game_result)
@@ -164,21 +170,24 @@ class RandomNode(Node):
   def simulate_game(
     game_state: GameState,
     indexes: list[int],
-    agent: Agent,
+    AgentType: type,
     pool: mp.Pool
   ) -> list[tuple[int, GameResult]]:
     results = pool.starmap(
       RandomNode.simulate_worker,
-      [(i, game_state, indexes[i], agent) for i in range(pool._processes)]
+      [(i, game_state.to_game_state_data(), indexes[i], AgentType) for i in range(pool._processes)]
     )
     return results
 
   @staticmethod
-  def simulate_worker(thread_id: int, game: GameState, move_idx: int, agent: Agent) \
+  def simulate_worker(thread_id: int, game_state_data, move_idx: int, AgentType: type) \
     -> tuple[int, GameResult]:
+    game = GameState.from_game_state_data(game_state_data)
     usec = datetime.datetime.now().microsecond
     seed = thread_id + int(usec) & 0xFFFF_FFFF
     np.random.seed(seed)
+
+    agent = AgentType()
 
     game = game.apply_move(idx_to_move(move_idx, game.board.size))
     while not game.is_over():
