@@ -114,7 +114,7 @@ def _collect_region(start_pos, board, visited=None):
   deltas = [(-1, 0), (1, 0), (0, -1), (0, 1)]
   for delta_r, delta_c in deltas:
     next_p = Point(row=start_pos.row + delta_r, col=start_pos.col + delta_c)
-    if not board.is_on_grid(next_p):
+    if not board.in_board(next_p):
       continue
     neighbor = board.get(next_p)
     if neighbor == here:

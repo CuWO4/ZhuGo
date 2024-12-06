@@ -1,4 +1,4 @@
-from go.goboard import Board, Move, GoString
+from go.goboard import Board, Move
 from go.gotypes import Point, Player
 
 import copy
@@ -41,43 +41,40 @@ def analyze_gostring(board: Board, point: Point) -> tuple[bool, int, set[Point]]
   Returns:
     tuple: (bool, int, set). Indicates whether the string would be captured,
            the number of moves to escape/capture, and the escaping path.
+
+  Note:
+    board will be modified
   """
-  assert board.is_on_grid(point)
+  assert board.in_board(point)
 
-  current_string: GoString = board.get_go_string(point)
+  assert board.get(point) != None
 
-  assert current_string is not None
-
-  if current_string.num_liberties > 1: # not captured
+  if board.qi(point) > 1: # not captured
     return False, 0, set()
 
-  escaping_player: Player = current_string.color
+  escaping_player: Player = board.get(point)
   chasing_player: Player = escaping_player.other
 
-  escape_point: Point = next(iter(current_string.liberties))
-  assert board.is_on_grid(escape_point)
+  escape_point: Point = board.get_random_qi_pos(point)
+  assert board.in_board(escape_point)
   assert board.get(escape_point) is None
 
-  if board.is_self_capture(escaping_player, escape_point):
+  if not board.is_valid_move(escape_point, escaping_player):
     return True, 0, set() # captured
 
-  after_escape_board = copy.deepcopy(board)
+  after_escape_board = board
   after_escape_board.place_stone(escaping_player, escape_point)
 
-  new_string = after_escape_board.get_go_string(escape_point)
-  assert new_string is not None
-
-  if new_string.num_liberties > 2:
+  if after_escape_board.qi(escape_point) > 2:
     return False, 0, set()  # escaped
   
-  if new_string.num_liberties <= 1:
+  if after_escape_board.qi(escape_point) <= 1:
     return True, 1, set([escape_point])
 
   chasing_candidates = [
     point for point in escape_point.neighbors()
-    if board.is_on_grid(point)
-       and board.get(point) is None
-       and not board.is_self_capture(chasing_player, point)
+    if after_escape_board.in_board(point)
+       and after_escape_board.is_valid_move(point, chasing_player)
   ]
 
   if chasing_candidates == []:
@@ -93,15 +90,14 @@ def analyze_gostring(board: Board, point: Point) -> tuple[bool, int, set[Point]]
 
     no_opponents_string_less_than_2_qi = True
     for neighbor in escape_point.neighbors():
-      if not after_chasing_board.is_on_grid(neighbor):
+      if not after_chasing_board.in_board(neighbor):
         continue
 
-      neighbor_string = after_chasing_board.get_go_string(neighbor)
-
-      if neighbor_string is None or neighbor_string.color == escaping_player:
+      if after_chasing_board.get(neighbor) is None \
+        or after_chasing_board.get(neighbor) == escaping_player:
         continue
 
-      if neighbor_string.num_liberties <= 1: # escaped
+      if after_chasing_board.qi(neighbor) <= 1: # escaped
         no_opponents_string_less_than_2_qi = False
         break
 
@@ -129,22 +125,43 @@ def analyze_ladder(board: Board, threshold: int = 4) -> LadderAnalysis:
   Returns:
     LadderAnalysis: The analysis results.
   """
+  
+  def get_go_string(board: Board, point: Point, visited_points: set[Point]) -> set[Point]:
+    if point in visited_points:
+      return set()
+    visited_points.update([point])
+    
+    stone = board.get(point)
+    if stone is None:
+      return set()
+    
+    stones = set([point])
+    
+    for neighbor in (Point(row = point.row + dx, col = point.col + dy) for dx in (-1, 1) for dy in (-1, 1)):
+      if not board.in_board(neighbor):
+        continue
+
+      if board.get(neighbor) == stone:
+        stones |= get_go_string(board, neighbor, visited_points)
+      
+    return stones
 
   ladder_analysis = LadderAnalysis()
   visited_points: set[Point] = set()
 
   for point in [Point(row + 1, col + 1) for row in range(board.num_rows) for col in range(board.num_cols)]:
-    if point in visited_points or board.get_go_string(point) is None:
+    if point in visited_points or board.get(point) is None:
       continue
 
-    is_captured, escape_steps, escape_path = analyze_gostring(board, point)
+    go_string = get_go_string(board, point, set())
+
+    is_captured, escape_steps, escape_path = analyze_gostring(copy.deepcopy(board), point)
 
     if is_captured and escape_steps > threshold:
-      trapped_points = board.get_go_string(point).stones
-      ladder_analysis._mark_stones_as_trapped(trapped_points)
+      ladder_analysis._mark_stones_as_trapped(go_string)
       ladder_analysis._mark_escape_paths(escape_path)
 
-    visited_points |= board.get_go_string(point).stones
+    visited_points |= go_string
 
   return ladder_analysis
 

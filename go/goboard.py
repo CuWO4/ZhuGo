@@ -1,7 +1,7 @@
 import copy
 from go.gotypes import Player, Point
 import go.scoring as scoring
-from go import zobrist
+from cboard.cboard import cBoard
 
 __all__ = [
   'Board',
@@ -9,232 +9,69 @@ __all__ = [
   'Move',
 ]
 
-neighbor_tables = {}
-corner_tables = {}
-
-
-def init_neighbor_table(dim: int):
-  rows, cols = dim
-  new_table = {}
-  for r in range(1, rows + 1):
-    for c in range(1, cols + 1):
-      p = Point(row=r, col=c)
-      full_neighbors = p.neighbors()
-      true_neighbors = [
-        n for n in full_neighbors
-        if 1 <= n.row <= rows and 1 <= n.col <= cols]
-      new_table[p] = true_neighbors
-  neighbor_tables[dim] = new_table
-
-
-def init_corner_table(dim: int):
-  rows, cols = dim
-  new_table = {}
-  for r in range(1, rows + 1):
-    for c in range(1, cols + 1):
-      p = Point(row=r, col=c)
-      full_corners = [
-        Point(row=p.row - 1, col=p.col - 1),
-        Point(row=p.row - 1, col=p.col + 1),
-        Point(row=p.row + 1, col=p.col - 1),
-        Point(row=p.row + 1, col=p.col + 1),
-      ]
-      true_corners = [
-        n for n in full_corners
-        if 1 <= n.row <= rows and 1 <= n.col <= cols]
-      new_table[p] = true_corners
-  corner_tables[dim] = new_table
-
 
 class IllegalMoveError(Exception):
   pass
 
 
-class GoString():
-  """Stones that are linked by a chain of connected stones of the
-  same color.
-  """
-  def __init__(self, color, stones, liberties):
-    self.color = color
-    self.stones = frozenset(stones)
-    self.liberties = frozenset(liberties)
-
-  def without_liberty(self, point):
-    new_liberties = self.liberties - set([point])
-    return GoString(self.color, self.stones, new_liberties)
-
-  def with_liberty(self, point):
-    new_liberties = self.liberties | set([point])
-    return GoString(self.color, self.stones, new_liberties)
-
-  def merged_with(self, string):
-    """Return a new string containing all stones in both strings."""
-    assert string.color == self.color
-    combined_stones = self.stones | string.stones
-    return GoString(
-      self.color,
-      combined_stones,
-      (self.liberties | string.liberties) - combined_stones)
-
-  @property
-  def num_liberties(self):
-    return len(self.liberties)
-
-  def __eq__(self, other):
-    return isinstance(other, GoString) and \
-      self.color == other.color and \
-      self.stones == other.stones and \
-      self.liberties == other.liberties
-
-  def __deepcopy__(self, memodict={}):
-    return GoString(self.color, self.stones, copy.deepcopy(self.liberties))
-
-
 class Board():
-  def __init__(self, num_rows: int, num_cols: int):
+  def __init__(self, num_rows: int, num_cols: int, c_board: cBoard | None = None):
     self.num_rows: int = num_rows
     self.num_cols: int = num_cols
-    self._grid = {}
-    self._hash = zobrist.EMPTY_BOARD
-
-    global neighbor_tables
-    dim = (num_rows, num_cols)
-    if dim not in neighbor_tables:
-      init_neighbor_table(dim)
-    if dim not in corner_tables:
-      init_corner_table(dim)
-    self.neighbor_table = neighbor_tables[dim]
-    self.corner_table = corner_tables[dim]
+    if c_board is None:
+      self.c_board: cBoard = cBoard(num_rows, num_cols)
+    else:
+      self.c_board = c_board
+  
+  @staticmethod
+  def c_player_to_py_player(c_player: int) -> Player:
+    if c_player == 0:
+      return None
+    elif c_player == 1:
+      return Player.black
+    elif c_player == 2:
+      return Player.white
+    else:
+      raise ValueError(f'unknown c player {c_player}')
     
+  @staticmethod
+  def py_player_to_c_player(py_player: Player) -> int:
+    if py_player is None:
+      return 0
+    elif py_player == Player.black:
+      return 1
+    elif py_player == Player.white:
+      return 2
+    else:
+      raise ValueError(f'unknown py player {py_player}')
+
   @property
   def size(self) -> tuple[int, int]:
     '''return row_n, col_n'''
     return self.num_rows, self.num_cols
-
-  def neighbors(self, point: Point):
-    return self.neighbor_table[point]
-
-  def corners(self, point: Point):
-    return self.corner_table[point]
+  
+  def get(self, point: Point) -> Player | None:
+    c_player = self.c_board.get(point.row - 1, point.col - 1)
+    return self.c_player_to_py_player(c_player)
+  
+  def qi(self, point: Point) -> int:
+    return self.c_board.qi(point.row - 1, point.col - 1)
+  
+  def get_random_qi_pos(self, point: Point) -> Point:
+    c_row, c_col = self.c_board.get_random_qi_pos(point.row - 1, point.col - 1)
+    return Point(row = c_row + 1, col = c_col + 1)
+  
+  def is_valid_move(self, point: Point, player: Player) -> bool:
+    c_player = self.py_player_to_c_player(player)
+    return self.c_board.is_valid_move(c_player, point.row - 1, point.col - 1)
 
   def place_stone(self, player: Player, point: Point):
-    assert self.is_on_grid(point)
-    if self._grid.get(point) is not None:
-      print('Illegal play on %s' % str(point))
-    assert self._grid.get(point) is None
-    # 0. Examine the adjacent points.
-    adjacent_same_color = []
-    adjacent_opposite_color = []
-    liberties = []
-    for neighbor in self.neighbor_table[point]:
-      neighbor_string = self._grid.get(neighbor)
-      if neighbor_string is None:
-        liberties.append(neighbor)
-      elif neighbor_string.color == player:
-        if neighbor_string not in adjacent_same_color:
-          adjacent_same_color.append(neighbor_string)
-      else:
-        if neighbor_string not in adjacent_opposite_color:
-          adjacent_opposite_color.append(neighbor_string)
-    new_string = GoString(player, [point], liberties)
-# tag::apply_zobrist[]
-    # 1. Merge any adjacent strings of the same color.
-    for same_color_string in adjacent_same_color:
-      new_string = new_string.merged_with(same_color_string)
-    for new_string_point in new_string.stones:
-      self._grid[new_string_point] = new_string
-    # Remove empty-point hash code.
-    self._hash ^= zobrist.HASH_CODE[point, None]
-    # Add filled point hash code.
-    self._hash ^= zobrist.HASH_CODE[point, player]
-# end::apply_zobrist[]
+    c_player = self.py_player_to_c_player(player)
+    self.c_board.place_stone(c_player, point.row - 1, point.col - 1)
 
-    # 2. Reduce liberties of any adjacent strings of the opposite
-    #  color.
-    # 3. If any opposite color strings now have zero liberties,
-    #  remove them.
-    for other_color_string in adjacent_opposite_color:
-      replacement = other_color_string.without_liberty(point)
-      if replacement.num_liberties:
-        self._replace_string(other_color_string.without_liberty(point))
-      else:
-        self._remove_string(other_color_string)
-
-  def _replace_string(self, new_string):
-    for point in new_string.stones:
-      self._grid[point] = new_string
-
-  def _remove_string(self, string):
-    for point in string.stones:
-      # Removing a string can create liberties for other strings.
-      for neighbor in self.neighbor_table[point]:
-        neighbor_string = self._grid.get(neighbor)
-        if neighbor_string is None:
-          continue
-        if neighbor_string is not string:
-          self._replace_string(neighbor_string.with_liberty(point))
-      self._grid[point] = None
-      # Remove filled point hash code.
-      self._hash ^= zobrist.HASH_CODE[point, string.color]
-      # Add empty point hash code.
-      self._hash ^= zobrist.HASH_CODE[point, None]
-
-  def is_self_capture(self, player: Player, point: Point) -> bool:
-    friendly_strings = []
-    for neighbor in self.neighbor_table[point]:
-      neighbor_string = self._grid.get(neighbor)
-      if neighbor_string is None:
-        # This point has a liberty. Can't be self capture.
-        return False
-      elif neighbor_string.color == player:
-        # Gather for later analysis.
-        friendly_strings.append(neighbor_string)
-      else:
-        if neighbor_string.num_liberties == 1:
-          # This move is real capture, not a self capture.
-          return False
-    if all(neighbor.num_liberties == 1 for neighbor in friendly_strings):
-      return True
-    return False
-
-  def will_capture(self, player: Player, point: Point) -> bool:
-    for neighbor in self.neighbor_table[point]:
-      neighbor_string = self._grid.get(neighbor)
-      if neighbor_string is None:
-        continue
-      elif neighbor_string.color == player:
-        continue
-      else:
-        if neighbor_string.num_liberties == 1:
-          # This move would capture.
-          return True
-    return False
-
-  def is_on_grid(self, point: Point) -> bool:
+  def in_board(self, point: Point) -> bool:
     return 1 <= point.row <= self.num_rows and \
       1 <= point.col <= self.num_cols
-
-  def get(self, point: Point) -> Player | None:
-    """Return the content of a point on the board.
-
-    Returns None if the point is empty, or a Player if there is a
-    stone on that point.
-    """
-    string = self._grid.get(point)
-    if string is None:
-      return None
-    return string.color
-
-  def get_go_string(self, point: Point) -> GoString:
-    """Return the entire string of stones at a point.
-
-    Returns None if the point is empty, or a GoString if there is
-    a stone on that point.
-    """
-    string = self._grid.get(point)
-    if string is None:
-      return None
-    return string
 
   def __str__(self) -> str:
     STONE_TO_CHAR = {
@@ -250,23 +87,16 @@ class Board():
     return str
 
   def __eq__(self, other):
-    return isinstance(other, Board) and \
-      self.num_rows == other.num_rows and \
-      self.num_cols == other.num_cols and \
-      self._hash == other._hash
+    return isinstance(other, Board) \
+      and self.num_rows == other.num_rows \
+      and self.num_cols == other.num_cols \
+      and self.hash() == other.hash()
 
-  def __deepcopy__(self, memodict={}):
-    copied = Board(self.num_rows, self.num_cols)
-    # Can do a shallow copy b/c the dictionary maps tuples
-    # (immutable) to GoStrings (also immutable)
-    copied._grid = copy.copy(self._grid)
-    copied._hash = self._hash
-    return copied
+  def __deepcopy__(self, memo={}):
+    return Board(self.num_rows, self.num_cols, copy.deepcopy(self.c_board))
 
-# tag::return_zobrist[]
-  def zobrist_hash(self):
-    return self._hash
-# end::return_zobrist[]
+  def hash(self) -> int:
+    return self.c_board.hash()
 
 
 class Move():
@@ -358,7 +188,8 @@ class GameState():
     else:
       self.previous_states = frozenset(
         previous_state.previous_states |
-        {(previous_state.next_player, previous_state.board.zobrist_hash())})
+        {(previous_state.next_player, previous_state.board.hash())}
+      )
     self.last_move: Move = last_move
 
     self.is_privileged_mode: bool = is_privileged_mode
@@ -391,23 +222,12 @@ class GameState():
   def new_game(board_size: tuple[int] = (19, 19), komi: float = 7.5, *, is_privileged_mode: bool = False):
     return GameState(Board(*board_size), Player.black, None, None, komi, is_privileged_mode = is_privileged_mode)
 
-  def is_move_self_capture(self, player: Player, move: Move) -> bool:
-    if not move.is_play:
-      return False
-    return self.board.is_self_capture(player, move.point)
-
-  @property
-  def situation(self) -> tuple[Player, Board]:
-    return (self.next_player, self.board)
-
   def does_move_violate_ko(self, player: Player, move: Move) -> bool:
     if not move.is_play:
       return False
-    if not self.board.will_capture(player, move.point):
-      return False
     next_board = copy.deepcopy(self.board)
     next_board.place_stone(player, move.point)
-    next_situation = (player.other, next_board.zobrist_hash())
+    next_situation = (player.other, next_board.hash())
     return next_situation in self.previous_states
 
   def is_valid_move(self, move: Move) -> bool:
@@ -417,10 +237,9 @@ class GameState():
       return True
     if move.is_undo:
       return self.is_privileged_mode
-    return (
-      self.board.get(move.point) is None and
-      not self.is_move_self_capture(self.next_player, move) and
-      not self.does_move_violate_ko(self.next_player, move))
+    return self.board.get(move.point) is None \
+      and self.board.is_valid_move(move.point, self.next_player) \
+      and not self.does_move_violate_ko(self.next_player, move)
 
   def is_over(self) -> bool:
     if self.last_move is None:
