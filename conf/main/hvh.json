@@ -1,0 +1,15 @@
+{
+  "mode": "game",
+  "agents": [
+    {
+      "class_name": "agent.human_agent.HumanAgent",
+      "args": {}
+    },
+    {
+      "class_name": "agent.human_agent.HumanAgent",
+      "args": {}
+    }
+  ],
+  "gui": "ui.tk_gui.TkGUI",
+  "game": {}
+}
