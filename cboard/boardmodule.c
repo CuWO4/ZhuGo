@@ -1,8 +1,6 @@
 #include <Python.h>
 
-#define NDEBUG
-
-#include "board.c"
+#include "board.h"
 
 // Python wrapper for new_board
 static PyObject* py_new_board(PyObject* self, PyObject* args) {
