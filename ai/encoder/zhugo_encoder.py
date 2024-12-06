@@ -109,7 +109,7 @@ class ZhuGoEncoder(Encoder):
       if board.get(point) is None:
         continue
 
-      qi = board.get_go_string(point).num_liberties
+      qi = board.qi(point)
       qi = min(max_qi, qi)
 
       if qi > 0:
@@ -128,7 +128,7 @@ class ZhuGoEncoder(Encoder):
 
       simulated_game_state = game_state.apply_move(Move.play(point))
 
-      qi = simulated_game_state.board.get_go_string(point).num_liberties
+      qi = simulated_game_state.board.qi(point)
       qi = min(max_qi, qi)
 
       if qi > 0:
@@ -154,8 +154,7 @@ class ZhuGoEncoder(Encoder):
     tensor = torch.zeros((1, *game_state.board.size), device='cpu', dtype=torch.float32)
 
     for point in iterable_points(game_state):
-      if game_state.board.get(point) is not None \
-        or game_state.is_move_self_capture(game_state.next_player, Move.play(point)):
+      if not game_state.board.is_valid_move(point, game_state.next_player):
         continue
       
       if game_state.does_move_violate_ko(game_state.next_player, Move.play(point)):
