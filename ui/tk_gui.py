@@ -54,7 +54,7 @@ class TkRenderer:
     self.canvas: tk.Canvas = tk.Canvas(
       self.root,
       width=self.window_w,
-      height=self.window_h,
+      height=self.window_h + padding,
       bd=0,
       highlightthickness=0,
       bg="#f5b041"
@@ -117,7 +117,7 @@ class TkRenderer:
     color = 'black' if self.cur_game_state.next_player == Player.black else 'white'
     radius = self.padding / 3
     cx = self.window_w / 2
-    cy = self.window_h - self.padding / 2
+    cy = self.window_h
     self.canvas.create_oval(
       cx - radius, cy - radius, cx + radius, cy + radius,
       fill=color, outline=color
@@ -204,7 +204,7 @@ class TkRenderer:
     best_move_pos = self.cur_mcts_data.best_pos()
     if best_move_pos is not None:
       best_move_y, best_move_x = best_move_pos
-      self.draw_piece(best_move_x, best_move_y, '#186A3B', expand=3)
+      self.draw_piece(best_move_x, best_move_y, '#AF7AC5', expand=4)
     
     for x in range(self.col_n):
       for y in range(self.row_n):
