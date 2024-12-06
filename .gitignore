@@ -11,3 +11,5 @@ devlog/
 
 *.txt
 *.tmp
+*.log
+*.prof
