@@ -9,10 +9,10 @@ import argparse
 
 def parse_args() -> tuple[str]:
   parser = argparse.ArgumentParser()
-  parser.add_argument('-c', '--conf', type=str, 
-                      default='conf/main/default.json', 
-                      help='path to configuration file, human vs strongest robot so far'
-                           'by default. check conf/main/ for more details.')
+  parser.add_argument(
+    '-c', '--conf', type=str, required=True,
+    help='path to configuration file, check conf/main/ for more details.'
+  )
   args = parser.parse_args()
   
   return (args.conf,)
