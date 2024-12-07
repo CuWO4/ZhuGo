@@ -28,10 +28,12 @@ class GameStateProxy: # GameState includes py capsule object, cannot be serializ
     
 
 class TkGUI(UI):
-  def __init__(self,
-               move_queue: multiprocessing.Queue,
-               mcts_queue: multiprocessing.Queue = None,
-               row_n: int = 19, col_n: int = 19):
+  def __init__(
+    self,
+    move_queue: multiprocessing.Queue,
+    mcts_queue: multiprocessing.Queue = None,
+    row_n: int = 19, col_n: int = 19
+  ):
     super().__init__(move_queue, mcts_queue, row_n, col_n)
     self.game_state_queue = multiprocessing.Queue()
 
@@ -45,13 +47,18 @@ class TkGUI(UI):
     self.game_state_queue.put(GameStateProxy(game_state))
 
 class TkRenderer:
-  def __init__(self,
-               game_state_queue: multiprocessing.Queue,
-               move_queue: multiprocessing.Queue,
-               mcts_queue: multiprocessing.Queue,
-               row_n: int, col_n: int,
-               cell_size: int=40,
-               padding: int=60):
+  def __init__(
+    self,
+    game_state_queue: multiprocessing.Queue,
+    move_queue: multiprocessing.Queue,
+    mcts_queue: multiprocessing.Queue,
+    row_n: int, col_n: int,
+    cell_size: int=40,
+    padding: int=60,
+    back_ground_color: str = '#F5B041',
+    winning_rate_bar_height: int = 25,
+    winning_rate_bar_text_color: str = '#717D7E'
+  ):
     self.game_state_queue: multiprocessing.Queue = game_state_queue
     self.move_queue: multiprocessing.Queue = move_queue
     self.mcts_queue: multiprocessing.Queue | None = mcts_queue
@@ -63,6 +70,12 @@ class TkRenderer:
     self.col_n: int = col_n
     self.cell_size: int = cell_size
     self.padding: int = padding
+    
+    self.winning_rate_bar_height: int = winning_rate_bar_height
+    self.winning_rate_bar_text_color = winning_rate_bar_text_color
+
+    self.back_ground_color = back_ground_color
+    
     self.window_w: int = cell_size * (col_n - 1) + 2 * padding
     self.window_h: int = cell_size * (row_n - 1) + 2 * padding
     self.root: tk.Tk = tk.Tk()
@@ -73,7 +86,7 @@ class TkRenderer:
       height=self.window_h + padding,
       bd=0,
       highlightthickness=0,
-      bg="#f5b041"
+      bg=self.back_ground_color
     )
     self.canvas.pack()
 
@@ -115,8 +128,6 @@ class TkRenderer:
 
     self.canvas.delete("all")
 
-    self.draw_cur_player()
-
     self.draw_lines()
 
     self.draw_star_points()
@@ -127,16 +138,18 @@ class TkRenderer:
 
     self.draw_mcts_state()
 
+    self.draw_cur_player()
+
     self.draw_message()
 
   def draw_cur_player(self):
     color = 'black' if self.cur_game_state.next_player == Player.black else 'white'
-    radius = self.padding / 3
+    radius = self.padding / 2
     cx = self.window_w / 2
     cy = self.window_h
     self.canvas.create_oval(
       cx - radius, cy - radius, cx + radius, cy + radius,
-      fill=color, outline=color
+      fill=color, outline=self.back_ground_color, width=10
     )
 
   def draw_lines(self):
@@ -217,6 +230,8 @@ class TkRenderer:
     if self.cur_mcts_data is None:
       return
     
+    self.draw_mcts_q_bar()
+    
     best_move_pos = self.cur_mcts_data.best_pos()
     if best_move_pos is not None:
       best_move_y, best_move_x = best_move_pos
@@ -249,6 +264,56 @@ class TkRenderer:
         self.canvas.create_text(cx, cy - vertical_bias, text=f'{q:.2f}', font=('Consolas', 10), fill='black')
         self.canvas.create_text(cx, cy + vertical_bias, text=f'{int(visited_time)}', font=('Consolas', 10), fill='black')
 
+  def draw_mcts_q_bar(self):
+    visited_time_sum = 0
+    q_avg = 0
+    for x in range(self.col_n):
+      for y in range(self.row_n):
+        q, visited_time = self.cur_mcts_data.get(row=y, col=x)
+        q_avg += q * visited_time
+        visited_time_sum += visited_time
+    if visited_time_sum != 0:
+      q_avg /= visited_time_sum
+    else:
+      q_avg = 0.5
+
+    black_q_avg = q_avg if self.cur_game_state.next_player == Player.black else 1 - q_avg
+    white_q_avg = 1 - black_q_avg
+    
+    width = self.window_w - 2 * self.padding
+
+    x0 = self.padding
+    y0 = int(self.window_h - self.winning_rate_bar_height / 2)
+
+    def linear_compress(value, min, max, new_min, new_max):
+      assert max > min and new_max > new_min
+      return ((value - min) / (max - min)) * (new_max - new_min) + new_min
+    
+    black_width = width * black_q_avg
+    # avoid confusion with winning rate text
+    black_width = linear_compress(
+      black_width, 
+      0, width, 
+      self.winning_rate_bar_height * 2, width - self.winning_rate_bar_height * 2
+    )
+
+    self.canvas.create_rectangle(x0, y0, x0 + width, y0 + self.winning_rate_bar_height, fill='white', outline='')
+    self.canvas.create_rectangle(x0, y0, x0 + black_width, y0 + self.winning_rate_bar_height, fill='black', outline='')
+
+    gap = self.winning_rate_bar_height // 2
+
+    self.canvas.create_text(
+      x0 + gap, y0 + self.winning_rate_bar_height // 2, 
+      text=f'{black_q_avg * 100:.1f}', font=('Consolas', self.winning_rate_bar_height // 2),
+      fill='white', anchor='w'
+    )
+    
+    self.canvas.create_text(
+      x0 + width - gap, y0 + self.winning_rate_bar_height // 2, 
+      text=f'{white_q_avg * 100:.1f}', font=('Consolas', self.winning_rate_bar_height // 2),
+      fill='black', anchor='e'
+    )
+    
   def draw_message(self):
     if self.cur_game_state.is_over:
       winner = 'white' if self.cur_game_state.winner == Player.white else 'black'
