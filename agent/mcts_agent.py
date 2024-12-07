@@ -52,6 +52,7 @@ class MCTSAgent(Agent):
         self.root.q,
         self.root.visited_times,
         best_move_idx(self.root.visited_times, self.root.q),
+        self.root.win_rate,
         board.size
       )
 
