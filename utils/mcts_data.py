@@ -7,10 +7,11 @@ __all__ = [
 ]
 
 class MCTSData:
-  def __init__(self, q: iter, visited_times: iter, best_idx: int | None, size: tuple[int, int]) -> None:
+  def __init__(self, q: iter, visited_times: iter, best_idx: int | None, win_rate: float | None, size: tuple[int, int]) -> None:
     self.q = q
     self.visited_times: iter = visited_times
     self.best_idx: int | None = best_idx
+    self.win_rate: float | None = win_rate
     self.size: tuple[int, int] = size
     
   @staticmethod
@@ -18,7 +19,7 @@ class MCTSData:
     '''return empty MCTSData'''
     row_n, col_n = size
     policy_size = row_n * col_n + 2
-    return MCTSData([0] * policy_size, [0] * policy_size, None, size)
+    return MCTSData([0] * policy_size, [0] * policy_size, None, None, size)
     
   def get(self, *, row: int, col: int) -> tuple[float, int]:
     '''return (q, visited_time). index starts from 0.'''
