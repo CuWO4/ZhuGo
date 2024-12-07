@@ -265,20 +265,13 @@ class TkRenderer:
         self.canvas.create_text(cx, cy + vertical_bias, text=f'{int(visited_time)}', font=('Consolas', 10), fill='black')
 
   def draw_mcts_q_bar(self):
-    visited_time_sum = 0
-    q_avg = 0
-    for x in range(self.col_n):
-      for y in range(self.row_n):
-        q, visited_time = self.cur_mcts_data.get(row=y, col=x)
-        q_avg += q * visited_time
-        visited_time_sum += visited_time
-    if visited_time_sum != 0:
-      q_avg /= visited_time_sum
-    else:
-      q_avg = 0.5
-
-    black_q_avg = q_avg if self.cur_game_state.next_player == Player.black else 1 - q_avg
-    white_q_avg = 1 - black_q_avg
+    if self.cur_mcts_data.win_rate is None:
+      return
+    
+    black_win_rate = self.cur_mcts_data.win_rate \
+      if self.cur_game_state.next_player == Player.black \
+      else 1 - self.cur_mcts_data.win_rate
+    white_win_rate = 1 - black_win_rate
     
     width = self.window_w - 2 * self.padding
 
@@ -289,30 +282,31 @@ class TkRenderer:
       assert max > min and new_max > new_min
       return ((value - min) / (max - min)) * (new_max - new_min) + new_min
     
-    black_width = width * black_q_avg
+    black_width = width * black_win_rate
     # avoid confusion with winning rate text
-    black_width = linear_compress(
+    black_width = int(linear_compress(
       black_width, 
       0, width, 
-      self.winning_rate_bar_height * 2, width - self.winning_rate_bar_height * 2
-    )
+      self.winning_rate_bar_height * 1.6, width - self.winning_rate_bar_height * 1.6
+    ))
 
     self.canvas.create_rectangle(x0, y0, x0 + width, y0 + self.winning_rate_bar_height, fill='white', outline='')
     self.canvas.create_rectangle(x0, y0, x0 + black_width, y0 + self.winning_rate_bar_height, fill='black', outline='')
 
-    gap = self.winning_rate_bar_height // 2
+    gap = self.winning_rate_bar_height // 4
 
-    self.canvas.create_text(
-      x0 + gap, y0 + self.winning_rate_bar_height // 2, 
-      text=f'{black_q_avg * 100:.1f}', font=('Consolas', self.winning_rate_bar_height // 2),
-      fill='white', anchor='w'
-    )
+    def render_win_rate_text(player: Player, win_rate: float):
+      is_black = player == Player.black
+      self.canvas.create_text(
+        x0 + gap if is_black else x0 + width - gap, 
+        y0 + self.winning_rate_bar_height // 2 - 1, 
+        text=f'{win_rate * 100:.1f}', font=('Consolas', self.winning_rate_bar_height // 2),
+        fill='white' if is_black else 'black', 
+        anchor='w' if is_black else 'e'
+      )
     
-    self.canvas.create_text(
-      x0 + width - gap, y0 + self.winning_rate_bar_height // 2, 
-      text=f'{white_q_avg * 100:.1f}', font=('Consolas', self.winning_rate_bar_height // 2),
-      fill='black', anchor='e'
-    )
+    render_win_rate_text(Player.black, black_win_rate)
+    render_win_rate_text(Player.white, white_win_rate)
     
   def draw_message(self):
     if self.cur_game_state.is_over:
