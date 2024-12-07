@@ -265,19 +265,12 @@ class TkRenderer:
         self.canvas.create_text(cx, cy + vertical_bias, text=f'{int(visited_time)}', font=('Consolas', 10), fill='black')
 
   def draw_mcts_q_bar(self):
-    visited_time_sum = 0
-    q_avg = 0
-    for x in range(self.col_n):
-      for y in range(self.row_n):
-        q, visited_time = self.cur_mcts_data.get(row=y, col=x)
-        q_avg += q * visited_time
-        visited_time_sum += visited_time
-    if visited_time_sum != 0:
-      q_avg /= visited_time_sum
-    else:
-      q_avg = 0.5
-
-    black_q_avg = q_avg if self.cur_game_state.next_player == Player.black else 1 - q_avg
+    if self.cur_mcts_data.win_rate is None:
+      return
+    
+    black_q_avg = self.cur_mcts_data.win_rate \
+      if self.cur_game_state.next_player == Player.black \
+      else 1 - self.cur_mcts_data.win_rate
     white_q_avg = 1 - black_q_avg
     
     width = self.window_w - 2 * self.padding
