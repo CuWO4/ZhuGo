@@ -4,6 +4,7 @@ build/
 tmp/
 .*/
 devlog/
+models/
 
 *.pyd
 *.model
