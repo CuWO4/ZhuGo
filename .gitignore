@@ -4,9 +4,12 @@ build/
 tmp/
 .*/
 devlog/
- 
+
+*.pyd
 *.model
 *.backup
 
 *.txt
 *.tmp
+*.log
+*.prof

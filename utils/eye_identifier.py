@@ -1,6 +1,5 @@
-# tag::helpersimport[]
+from go.goboard import Board
 from go.gotypes import Point, Player
-# end::helpersimport[]
 
 __all__ = [
     'is_point_an_eye',
@@ -8,11 +7,11 @@ __all__ = [
 
 
 # tag::eye[]
-def is_point_an_eye(board, point: Point, color: Player) -> bool:
+def is_point_an_eye(board: Board, point: Point, color: Player) -> bool:
     if board.get(point) is not None:  # <1>
         return False
     for neighbor in point.neighbors():  # <2>
-        if board.is_on_grid(neighbor):
+        if board.in_board(neighbor):
             neighbor_color = board.get(neighbor)
             if neighbor_color != color:
                 return False
@@ -26,7 +25,7 @@ def is_point_an_eye(board, point: Point, color: Player) -> bool:
         Point(point.row + 1, point.col + 1),
     ]
     for corner in corners:
-        if board.is_on_grid(corner):
+        if board.in_board(corner):
             corner_color = board.get(corner)
             if corner_color == color:
                 friendly_corners += 1

@@ -108,3 +108,7 @@ class Node:
   @property
   def visited_times(self) -> np.ndarray[int]:
     raise NotImplementedError()
+
+  @property
+  def win_rate(self) -> float:
+    raise NotImplementedError()
