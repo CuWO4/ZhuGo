@@ -57,7 +57,6 @@ class TkRenderer:
     padding: int=60,
     back_ground_color: str = '#F5B041',
     winning_rate_bar_height: int = 25,
-    winning_rate_bar_text_color: str = '#717D7E'
   ):
     self.game_state_queue: multiprocessing.Queue = game_state_queue
     self.move_queue: multiprocessing.Queue = move_queue
@@ -72,7 +71,6 @@ class TkRenderer:
     self.padding: int = padding
     
     self.winning_rate_bar_height: int = winning_rate_bar_height
-    self.winning_rate_bar_text_color = winning_rate_bar_text_color
 
     self.back_ground_color = back_ground_color
     
