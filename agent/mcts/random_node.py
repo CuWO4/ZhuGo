@@ -155,6 +155,21 @@ class RandomNode(Node):
       self.__visited_times_cache[idx] = len(subarr)
     self.__is_visited_times_dirty = False
     return self.__visited_times_cache
+  
+  @property
+  def win_rate(self) -> float:
+    visited_times_sum = np.sum(self.visited_times)
+    if visited_times_sum == 0:
+      return 0.5
+    else:
+      non_batch_normalized_q = [
+        sum([1 if margin > 0 else 0 for margin in margins]) / visited_time 
+          if visited_time != 0 else 0.5
+        for visited_time, margins in zip(self.visited_times, self.move_winning_margins)
+      ]
+      return np.sum(
+        non_batch_normalized_q * self.visited_times
+      ) / visited_times_sum
 
   @property
   def ucb(self) -> np.ndarray[float]:
