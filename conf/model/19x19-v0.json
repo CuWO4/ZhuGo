@@ -1,0 +1,9 @@
+{
+  "board_size": [19, 19], 
+  "input_channels": 24, 
+  "residual_channels": [96, 96, 64], 
+  "residual_depths": [2, 2, 2], 
+  "bottleneck_channels": 32, 
+  "policy_middle_channel": 32, 
+  "value_middle_width": 256
+}
