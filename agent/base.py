@@ -37,11 +37,12 @@ class Agent:
         last_valid_move = move
     return last_valid_move
       
-  def enqueue_mcts_data(self, q: iter, visited_times: iter, best_idx: int | None, size: tuple[int, int]):
+  def enqueue_mcts_data(self, q: iter, visited_times: iter, 
+                        best_idx: int | None, win_rate: float | None, size: tuple[int, int]):
     '''q and visited_times indexing method should be consistent with utils.move_idx_transformer'''
     if self.mcts_queue is None:
       return
-    self.mcts_queue.put(MCTSData(q, visited_times, best_idx, size))
+    self.mcts_queue.put(MCTSData(q, visited_times, best_idx, win_rate, size))
 
   def enqueue_empty_mcts_data(self, size: tuple[int, int]):
     if self.mcts_queue is None:

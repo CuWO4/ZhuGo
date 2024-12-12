@@ -22,6 +22,23 @@ class Board():
       self.c_board: cBoard = cBoard(num_rows, num_cols)
     else:
       self.c_board = c_board
+      
+  def to_board_data(self):
+    return [
+      [self.c_board.get(row, col) for col in range(self.num_cols)]
+      for row in range(self.num_rows)
+    ]
+    
+  @staticmethod
+  def from_board_data(borad_data):
+    rows = len(borad_data)
+    cols = len(borad_data[0])
+
+    c_board = cBoard(rows, cols)
+    for r, row in enumerate(borad_data):
+      for c, player in enumerate(row):
+        c_board.place_stone(player, r, c)
+    return Board(rows, cols, c_board)
   
   @staticmethod
   def c_player_to_py_player(c_player: int) -> Player:
@@ -193,6 +210,16 @@ class GameState():
     self.last_move: Move = last_move
 
     self.is_privileged_mode: bool = is_privileged_mode
+    
+  def to_game_state_data(self):
+    return self.board.to_board_data(), self.next_player, self.komi, self.previous_states
+  
+  @staticmethod
+  def from_game_state_data(game_state_data):
+    board_data, next_player, komi, previous_states = game_state_data
+    game_state = GameState(Board.from_board_data(board_data), next_player, None, None, komi)
+    game_state.previous_states = previous_states
+    return game_state
 
   def apply_move(self, move: Move):
     """Return the new GameState after applying the move."""

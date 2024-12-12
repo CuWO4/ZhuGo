@@ -6,12 +6,8 @@
       "args": {}
     },
     {
-      "class_name": "agent.mcts_agent.MCTSAgent",
-      "args": {
-        "c": 1.0,
-        "max_depth": 8,
-        "thread_n": 18
-      }
+      "class_name": "agent.human_agent.HumanAgent",
+      "args": {}
     }
   ],
   "gui": "ui.tk_gui.TkGUI",
