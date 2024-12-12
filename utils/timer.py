@@ -1,8 +1,13 @@
 from time import time
 from typing import Callable
 
+import cProfile
+import pstats
+import io
+
 __all__ = [
-  'timer'
+  'timer',
+  'profile',
 ]
 
 def timer(time_precision: int = 2) -> Callable:
@@ -24,3 +29,15 @@ def timer(time_precision: int = 2) -> Callable:
 
   return decorator
   
+def profile(func: Callable) -> Callable:
+  def decorated_func(*args, **kwargs):
+    profiler = cProfile.Profile()
+    profiler.enable()
+    func(*args, **kwargs)
+    profiler.disable()
+    stream = io.StringIO()
+    stats = pstats.Stats(profiler, stream=stream)
+    stats.sort_stats('cumulative')
+    stats.print_stats(20)
+    print(stream.getvalue())
+  return decorated_func
