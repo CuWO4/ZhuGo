@@ -130,10 +130,12 @@ static PyObject* py_does_violate_ko(PyObject* self, PyObject* args) {
     return NULL;
   }
 
-  return does_violate_ko(board, player, row, col, last_board)
-    ? Py_True
-    : Py_False
-  ;
+  if (does_violate_ko(board, player, row, col, last_board)) {
+    Py_RETURN_TRUE;
+  }
+  else {
+    Py_RETURN_FALSE;
+  }
 }
 
 // Methods table
