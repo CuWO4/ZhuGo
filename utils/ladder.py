@@ -184,4 +184,4 @@ def ladder_analysis_to_mcts_data(ladder_analysis: LadderAnalysis, size: tuple[in
       q[move_to_idx(Move.play(point), size)] = 0
       visited_times[move_to_idx(Move.play(point), size)] = 100
 
-  return MCTSData(q, visited_times, None, size)
+  return MCTSData(q, visited_times, None, None, size)

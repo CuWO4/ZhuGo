@@ -22,7 +22,7 @@ class Board():
       self.c_board: cBoard = cBoard(num_rows, num_cols)
     else:
       self.c_board = c_board
-
+      
   def to_board_data(self):
     return [
       [self.c_board.get(row, col) for col in range(self.num_cols)]
@@ -39,7 +39,7 @@ class Board():
       for c, player in enumerate(row):
         c_board.place_stone(player, r, c)
     return Board(rows, cols, c_board)
-      
+  
   @staticmethod
   def c_player_to_py_player(c_player: int) -> Player:
     if c_player == 0:
