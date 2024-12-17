@@ -5,11 +5,6 @@
 static int dx[4] = { 1, -1, 0, 0 };
 static int dy[4] = { 0, 0, 1, -1 };
 
-inline bool in_board(Board* board, int row, int col) {
-
-  return 0 <= row && row < board->rows && 0 <= col && col < board->cols;
-}
-
 inline bool is_single_piece(Board* board, int row, int col) {
   Piece piece = get_piece(board, row, col);
 

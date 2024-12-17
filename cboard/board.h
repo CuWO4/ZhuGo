@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <assert.h>
 
 enum {
   EMPTY = 0,
@@ -25,6 +26,7 @@ typedef struct {
   uint64_t zobrist_hash;
 } Board;
 
+bool in_board(Board* board, int row, int col);
 Board* new_board(int rows, int cols);
 void delete_board(Board* board);
 Board* clone_board(Board* board);
@@ -34,5 +36,15 @@ void get_random_qi_pos(unsigned* pos_row, unsigned* pos_col, Board* board, int r
 bool is_valid_move(Board* board, int row, int col, Piece player);
 void place_piece(Board* board, int row, int col, Piece player);
 uint64_t hash(Board* board);
+
+
+inline bool in_board(Board* board, int row, int col) {
+  return 0 <= row && row < board->rows && 0 <= col && col < board->cols;
+}
+
+inline Piece get_piece(Board* board, int row, int col) {
+  assert(in_board(board, row, col));
+  return board->pieces[row][col];
+}
 
 #endif

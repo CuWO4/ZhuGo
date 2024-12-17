@@ -89,15 +89,6 @@ Board* clone_board(Board* board) {
   return cloned;
 }
 
-inline bool in_board(Board* board, int row, int col) {
-  return 0 <= row && row < board->rows && 0 <= col && col < board->cols;
-}
-
-inline Piece get_piece(Board* board, int row, int col) {
-  assert(in_board(board, row, col));
-  return board->pieces[row][col];
-}
-
 inline void add_piece(Board* board, int row, int col, Piece player) {
   assert(get_piece(board, row, col) == EMPTY);
   board->pieces[row][col] = player;
