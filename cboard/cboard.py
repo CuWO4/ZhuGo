@@ -7,10 +7,16 @@ from .boardmodule import (
    get_random_qi_pos,
    is_valid_move,
    place_piece,
-   hash as zobrist_hash
+   hash as zobrist_hash,
+   does_violate_ko as does_violate_ko_c,
 ) 
 # visit C extension functions by `boardmodule.xxx` may fail and get None when torch.nn is imported
 # before this file for unknown reason, while `from ... import ...` would not trigger the bug 
+
+__all__ = [
+  'cBoard',
+  'does_violate_ko'
+]
 
 class cBoard:
   def __init__(self, rows: int, cols: int, c_board = None):
@@ -44,4 +50,6 @@ class cBoard:
 
   def hash(self) -> int:
     return zobrist_hash(self._c_board)
-  
+
+def does_violate_ko(board: cBoard, player: int, row: int, col: int, last_board: cBoard) -> bool:
+  return does_violate_ko_c(board._c_board, player, row, col, last_board._c_board)

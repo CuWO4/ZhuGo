@@ -11,7 +11,9 @@ def find_c_files(directory: str) -> list[str]:
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 c_files = find_c_files(script_dir)
+
 print(c_files)
+
 cboard_extension = Extension(
   'boardmodule',
   sources=c_files,
