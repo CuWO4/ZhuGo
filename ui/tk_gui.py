@@ -55,7 +55,7 @@ class TkRenderer:
     row_n: int, col_n: int,
     cell_size: int=40,
     padding: int=60,
-    back_ground_color: str = '#F5B041',
+    back_ground_color: str = '#CDAC6A',
     winning_rate_bar_height: int = 25,
   ):
     self.game_state_queue: multiprocessing.Queue = game_state_queue
@@ -231,34 +231,39 @@ class TkRenderer:
     self.draw_mcts_q_bar()
     
     best_move_pos = self.cur_mcts_data.best_pos()
-    if best_move_pos is not None:
-      best_move_y, best_move_x = best_move_pos
-      self.draw_piece(best_move_x, best_move_y, '#AF7AC5', expand=4)
     
     for x in range(self.col_n):
       for y in range(self.row_n):
         q, visited_time = self.cur_mcts_data.get(row=y, col=x)
         if visited_time < 5:
           continue
-        color_table = [
-          (0.1,  '#A93226'), # dark red
-          (0.3,  '#E74C3C'), # light red
-          (0.45, '#EC7063'), # lighter red
-          (0.5,  '#F4D03F'), # yellow
-          (0.55, '#9CDFA5'), # even lighter green
-          (0.7,  '#58D68D'), # lighter green
-          (0.9,  '#239B56'), # light green
-          (1,    '#186A3B')  # dark green
-        ]
-        candidate_color = color_table[0][1]
-        for upper_bound, color in color_table:
-           if q <= upper_bound:
-             candidate_color = color
-             break
+        
+        if (y, x) == best_move_pos:
+          candidate_color = '#0CE6E6' # HSV: 180 95 90
+          self.draw_piece(x, y, '#5A5A5A', 2)
+          self.draw_piece(x, y, '#262626', 1)
+        else:
+          color_table = [
+                               #   H  S  V
+            (0.1,  '#C02F2A'), #   2 78 75
+            (0.3,  '#DA4939'), #   6 74 85
+            (0.45, '#DD8829'), #  32 81 87
+            (0.5,  '#DACA21'), #  55 85 85
+            (0.55, '#ABDA21'), #  76 85 85
+            (0.7,  '#66DA2C'), # 100 80 85
+            (0.9,  '#249C24'), # 120 77 61
+            (1,    '#1D8026')  # 126 77 50
+          ]
+          candidate_color = color_table[0][1]
+          for upper_bound, color in color_table:
+            if q <= upper_bound:
+              candidate_color = color
+              break
+        self.draw_piece(x, y, candidate_color)
+
         cx = self.padding + x * self.cell_size
         cy = self.padding + y * self.cell_size
         vertical_bias = 5
-        self.draw_piece(x, y, candidate_color)
         self.canvas.create_text(cx, cy - vertical_bias, text=f'{q:.2f}', font=('Consolas', 10), fill='black')
         self.canvas.create_text(cx, cy + vertical_bias, text=f'{int(visited_time)}', font=('Consolas', 10), fill='black')
 
