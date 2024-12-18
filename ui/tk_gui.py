@@ -57,6 +57,7 @@ class TkRenderer:
     padding: int=60,
     back_ground_color: str = '#CDAC6A',
     winning_rate_bar_height: int = 25,
+    font: str = 'Consolas'
   ):
     self.game_state_queue: multiprocessing.Queue = game_state_queue
     self.move_queue: multiprocessing.Queue = move_queue
@@ -73,6 +74,8 @@ class TkRenderer:
     self.winning_rate_bar_height: int = winning_rate_bar_height
 
     self.back_ground_color = back_ground_color
+
+    self.font: str = font
     
     self.window_w: int = cell_size * (col_n - 1) + 2 * padding
     self.window_h: int = cell_size * (row_n - 1) + 2 * padding
@@ -264,8 +267,8 @@ class TkRenderer:
         cx = self.padding + x * self.cell_size
         cy = self.padding + y * self.cell_size
         vertical_bias = 5
-        self.canvas.create_text(cx, cy - vertical_bias, text=f'{q:.2f}', font=('Consolas', 10), fill='black')
-        self.canvas.create_text(cx, cy + vertical_bias, text=f'{int(visited_time)}', font=('Consolas', 10), fill='black')
+        self.canvas.create_text(cx, cy - vertical_bias, text=f'{q:.2f}', font=(self.font, 10), fill='black')
+        self.canvas.create_text(cx, cy + vertical_bias, text=f'{int(visited_time)}', font=(self.font, 10), fill='black')
 
   def draw_mcts_q_bar(self):
     if self.cur_mcts_data.win_rate is None:
@@ -303,7 +306,7 @@ class TkRenderer:
       self.canvas.create_text(
         x0 + gap if is_black else x0 + width - gap, 
         y0 + self.winning_rate_bar_height // 2 - 1, 
-        text=f'{win_rate * 100:.1f}', font=('Consolas', self.winning_rate_bar_height // 2),
+        text=f'{win_rate * 100:.1f}', font=(self.font, self.winning_rate_bar_height // 2),
         fill='white' if is_black else 'black', 
         anchor='w' if is_black else 'e'
       )
