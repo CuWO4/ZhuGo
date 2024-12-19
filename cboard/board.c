@@ -6,8 +6,8 @@
 #include <assert.h>
 #include <stdint.h>
 
-static int dx[4] = { -1, 1, 0, 0 };
-static int dy[4] = { 0, 0, -1, 1 };
+static const int dx[4] = { -1, 1, 0, 0 };
+static const int dy[4] = { 0, 0, -1, 1 };
 
 inline Piece other(Piece piece) {
   assert(piece != EMPTY);
@@ -209,13 +209,13 @@ void update_qi(Board* board) {
 
   assert(board->rows < MAX_N && board->cols < MAX_N);
 
-  static bool is_piece_set_mem[MAX_N * MAX_N];
-  static bool is_piece_visited_mem[MAX_N * MAX_N];
-  static bool is_qi_visited_mem[MAX_N * MAX_N];
-
-  static bool* is_piece_set[MAX_N];
-  static bool* is_piece_visited[MAX_N];
-  static bool* is_qi_visited[MAX_N];
+  bool is_piece_set_mem[MAX_N * MAX_N];
+  bool is_piece_visited_mem[MAX_N * MAX_N];
+  bool is_qi_visited_mem[MAX_N * MAX_N];
+  
+  bool* is_piece_set[MAX_N];
+  bool* is_piece_visited[MAX_N];
+  bool* is_qi_visited[MAX_N];
 
   for (int i = 0; i < board->rows; i++) {
     is_piece_set[i] = is_piece_set_mem + i * board->cols;

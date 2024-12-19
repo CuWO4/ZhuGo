@@ -2,8 +2,8 @@
 
 #include <assert.h>
 
-static int dx[4] = { 1, -1, 0, 0 };
-static int dy[4] = { 0, 0, 1, -1 };
+static const int dx[4] = { 1, -1, 0, 0 };
+static const int dy[4] = { 0, 0, 1, -1 };
 
 inline bool is_single_piece(Board* board, int row, int col) {
   Piece piece = get_piece(board, row, col);
