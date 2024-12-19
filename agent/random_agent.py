@@ -16,24 +16,15 @@ class RandomAgent(Agent):
   
   def select_move(self, game_state: goboard.GameState) -> goboard.Move:
 
-    # try random actions first and return the first legal one
-    # after failing several times, randomly select from all legal actions
+    # shuffle all moves, try linearly, and return the first valid one
+    # if all moves are invalid, return pass turn
+
     board_size = game_state.board.num_rows * game_state.board.num_cols
-    for _ in range(board_size // 4):
-      rand_idx = random.randrange(0, board_size)
+    rand_indexes = list(range(0, board_size))
+    random.shuffle(rand_indexes)
+    for rand_idx in rand_indexes:
       rand_move = idx_to_move(rand_idx, game_state.board.size)
       if game_state.is_valid_move(rand_move) \
         and not is_point_an_eye(game_state.board, rand_move.point, game_state.next_player):
         return rand_move
-
-    candidates = []
-    for move in game_state.legal_moves():
-      if not move.is_pass and \
-        not move.is_resign and \
-        not is_point_an_eye(game_state.board, move.point, game_state.next_player):
-        candidates.append(move)
-    if not candidates:
-      return goboard.Move.pass_turn()
-    else:
-      return random.choice(candidates)
-      
+    return goboard.Move.pass_turn()
