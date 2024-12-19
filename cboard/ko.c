@@ -2,18 +2,12 @@
 
 #include <assert.h>
 
-static const int dx[4] = { 1, -1, 0, 0 };
-static const int dy[4] = { 0, 0, 1, -1 };
-
 inline bool is_single_piece(Board* board, int row, int col) {
   Piece piece = get_piece(board, row, col);
 
   assert(piece != EMPTY);
 
-  for (int k = 0; k < 4; k++) {
-    int r = row + dx[k];
-    int c = col + dy[k];
-
+  for_neighbor(board, row, col, r, c) {
     if (!in_board(board, r, c)) {
       continue;
     }
@@ -24,12 +18,6 @@ inline bool is_single_piece(Board* board, int row, int col) {
   }
   
   return true;
-}
-
-inline Piece other(Piece player) {
-  assert(player != EMPTY);
-
-  return player == BLACK ? WHITE : BLACK;
 }
 
 bool does_violate_ko(Board *board, Piece player, int row, int col, Board *last_board) {
@@ -47,10 +35,7 @@ bool does_violate_ko(Board *board, Piece player, int row, int col, Board *last_b
     return false;
   }
 
-  for (int k = 0; k < 4; k++) {
-    int r = row + dx[k];
-    int c = col + dy[k];
-
+  for_neighbor(board, row, col, r, c) {
     if (!in_board(board, r, c)) {
       continue;
     }
