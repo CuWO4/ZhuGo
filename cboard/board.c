@@ -6,19 +6,6 @@
 #include <assert.h>
 #include <stdint.h>
 
-static int dx[4] = { -1, 1, 0, 0 };
-static int dy[4] = { 0, 0, -1, 1 };
-
-inline Piece other(Piece piece) {
-  assert(piece != EMPTY);
-  if (piece == BLACK) {
-    return WHITE;
-  }
-  else {
-    return BLACK;
-  }
-}
-
 uint64_t hash_murmur(uint64_t x) {
   uint64_t h = x;
   h ^= h >> 33;
@@ -141,10 +128,7 @@ unsigned update_get_qi(
 
   unsigned qi = 0;
 
-  for (int k = 0; k < 4; k++) {
-    int r = row + dx[k];
-    int c = col + dy[k];
-
+  for_neighbor(board, row, col, r, c) {
     if (!in_board(board, r, c)) {
       continue;
     }
@@ -186,10 +170,7 @@ void update_set_qi(
   board->qi_cache[row][col] = qi;
   board->qi_pos[row][col] = ((pos_row & 0xFFFF) << 16) | (pos_col & 0xFFFF);
 
-  for (int k = 0; k < 4; k++) {
-    int r = row + dx[k];
-    int c = col + dy[k];
-
+  for_neighbor(board, row, col, r, c) {
     if (!in_board(board, r, c)) {
       continue;
     }
@@ -209,13 +190,13 @@ void update_qi(Board* board) {
 
   assert(board->rows < MAX_N && board->cols < MAX_N);
 
-  static bool is_piece_set_mem[MAX_N * MAX_N];
-  static bool is_piece_visited_mem[MAX_N * MAX_N];
-  static bool is_qi_visited_mem[MAX_N * MAX_N];
-
-  static bool* is_piece_set[MAX_N];
-  static bool* is_piece_visited[MAX_N];
-  static bool* is_qi_visited[MAX_N];
+  bool is_piece_set_mem[MAX_N * MAX_N];
+  bool is_piece_visited_mem[MAX_N * MAX_N];
+  bool is_qi_visited_mem[MAX_N * MAX_N];
+  
+  bool* is_piece_set[MAX_N];
+  bool* is_piece_visited[MAX_N];
+  bool* is_qi_visited[MAX_N];
 
   for (int i = 0; i < board->rows; i++) {
     is_piece_set[i] = is_piece_set_mem + i * board->cols;
@@ -225,25 +206,23 @@ void update_qi(Board* board) {
 
   memset(is_piece_set_mem, 0, board->rows * board->cols * sizeof(bool));
 
-  for (int r = 0; r < board->rows; r++) {
-    for (int c = 0; c < board->cols; c++) {
-      if (is_piece_set[r][c]) {
-        continue;
-      }
-
-      if (get_piece(board, r, c) == EMPTY) {
-        continue;
-      }
-
-      unsigned qi, pos_row, pos_col;
-
-      memset(is_piece_visited_mem, 0, board->rows * board->cols * sizeof(bool));
-      memset(is_qi_visited_mem, 0, board->rows * board->cols * sizeof(bool));
-
-      qi = update_get_qi(&pos_row, &pos_col, board, r, c, is_piece_visited, is_qi_visited);
-
-      update_set_qi(board, r, c, qi, pos_row, pos_col, is_piece_set);
+  for_each_cell(board, r, c) {
+    if (is_piece_set[r][c]) {
+      continue;
     }
+
+    if (get_piece(board, r, c) == EMPTY) {
+      continue;
+    }
+
+    unsigned qi, pos_row, pos_col;
+
+    memset(is_piece_visited_mem, 0, board->rows * board->cols * sizeof(bool));
+    memset(is_qi_visited_mem, 0, board->rows * board->cols * sizeof(bool));
+
+    qi = update_get_qi(&pos_row, &pos_col, board, r, c, is_piece_visited, is_qi_visited);
+
+    update_set_qi(board, r, c, qi, pos_row, pos_col, is_piece_set);
   }
 
   board->is_qi_updated = true;
@@ -255,10 +234,7 @@ bool is_self_capture(Board* board, int row, int col, Piece player) {
   assert(in_board(board, row, col));
   assert(get_piece(board, row, col) == EMPTY);
 
-  for (int k = 0; k < 4; k++) {
-    int r = row + dx[k];
-    int c = col + dy[k];
-
+  for_neighbor(board, row, col, r, c) {
     if (!in_board(board, r, c)) {
       continue;
     }
@@ -304,10 +280,7 @@ void remove_string(Board* board, int row, int col) {
 
   remove_piece(board, row, col);
 
-  for (int k = 0; k < 4; k++) {
-    int r = row + dx[k];
-    int c = col + dy[k];
-
+  for_neighbor(board, row, col, r, c) {
     if (!in_board(board, r, c)) {
       continue;
     }
@@ -324,10 +297,7 @@ void place_piece(Board* board, int row, int col, Piece player) {
   assert(is_valid_move(board, row, col, player));
   add_piece(board, row, col, player);
 
-  for (int k = 0; k < 4; k++) {
-    int r = row + dx[k];
-    int c = col + dy[k];
-
+  for_neighbor(board, row, col, r, c) {
     if (!in_board(board, r, c)) {
       continue;
     }
