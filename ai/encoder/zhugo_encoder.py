@@ -123,7 +123,8 @@ class ZhuGoEncoder(Encoder):
     tensor = torch.zeros((max_qi, *game_state.board.size), device='cpu', dtype=torch.float32)
 
     for point in iterable_points(game_state):
-      if not game_state.is_valid_move(Move.play(point)):
+      if not game_state.is_valid_move(Move.play(point)) \
+        or is_point_an_eye(game_state.board, point, game_state.next_player):
         continue
 
       simulated_game_state = game_state.apply_move(Move.play(point))
