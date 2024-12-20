@@ -137,7 +137,7 @@ def analyze_ladder(board: Board, threshold: int = 4) -> LadderAnalysis:
     
     stones = set([point])
     
-    for neighbor in (Point(row = point.row + dx, col = point.col + dy) for dx in (-1, 1) for dy in (-1, 1)):
+    for neighbor in point.neighbors():
       if not board.in_board(neighbor):
         continue
 
