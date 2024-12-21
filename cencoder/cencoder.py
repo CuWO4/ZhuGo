@@ -5,6 +5,8 @@ from go.gotypes import Player
 import torch
 
 def c_encode(game: GameState) -> torch.Tensor:
+  assert game.board.num_rows <= 19 and game.board.num_cols <= 19
+  
   c_board = game.board.c_board._c_board
   if game.previous_state is not None:
     c_last_board = game.previous_state.board.c_board._c_board
