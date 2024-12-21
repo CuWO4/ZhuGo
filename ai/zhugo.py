@@ -110,7 +110,7 @@ class ZhuGo(nn.Module):
       nn.LeakyReLU(),
       nn.Dropout(0.5),
       nn.Linear(value_middle_width, 1),
-      nn.Tanh(),
+      nn.Sigmoid(),
     )
 
   def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
