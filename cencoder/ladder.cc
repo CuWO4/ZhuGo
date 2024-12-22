@@ -5,7 +5,7 @@
 
 constexpr int max_size = 19;
 
-std::set<Point> get_go_string(Board* board, int row, int col) {
+static std::set<Point> get_go_string(Board* board, int row, int col) {
   Piece piece = get_piece(board, row, col);
   if (piece == EMPTY) {
     return {};
@@ -39,11 +39,64 @@ std::set<Point> get_go_string(Board* board, int row, int col) {
   return go_string;
 }
 
+static std::tuple<bool, int, std::set<Point>>
+analyze_go_string_agent(Board* board, int row, int col);
+
 /**
  * @return  is_captured<bool>, escape_steps<int>, escape_path<set>
  */
-std::tuple<bool, int, std::set<Point>>
+static std::tuple<bool, int, std::set<Point>>
 analyze_go_string(Board* board, int row, int col) {
+  assert(in_board(board, row, col));
+
+  Piece piece = get_piece(board, row, col);
+  assert(piece != EMPTY);
+
+  if (get_qi(board, row, col) > 1) {
+    return { false, 0, {} };
+  }
+
+  Piece escaping_player = piece;
+  Piece chasing_player = other(escaping_player);
+
+  for (const auto& [r, c] : get_go_string(board, row, col)) {
+    for_neighbor(board, r, c, neighbor_r, neighbor_c) {
+      if (
+        in_board(board, neighbor_r, neighbor_c)
+        && get_piece(board, neighbor_r, neighbor_c) == chasing_player 
+        && get_qi(board, neighbor_r, neighbor_c) <= 1) {
+        return { false, 0, {} };
+      }
+    }
+  }
+
+  return analyze_go_string_agent(board, row, col);
+}
+
+static std::set<Point> get_all_qi_point_of_gostring(
+  Board* board,
+  const std::set<Point>& gostring
+) {
+  std::set<Point> qi_pos {};
+  for (auto [r, c] : gostring) {
+    for_neighbor(board, r, c, neighbor_r, neighbor_c) {
+      if (
+        in_board(board, neighbor_r, neighbor_c)
+        && get_piece(board, neighbor_r, neighbor_c) == EMPTY
+      ) {
+        qi_pos.insert({ neighbor_r, neighbor_c });
+      }
+    }
+  }
+  return qi_pos;
+}
+
+/* refactor 
+ *    extract simple functions, it's too complicated
+ *    as one single function now
+ */
+static std::tuple<bool, int, std::set<Point>>
+analyze_go_string_agent(Board* board, int row, int col) {
   assert(in_board(board, row, col));
 
   Piece piece = get_piece(board, row, col);
@@ -63,29 +116,76 @@ analyze_go_string(Board* board, int row, int col) {
     return { true, 0, {} };
   }
 
-  // When compiling on Windows, msvc will place the placement after get_qi out of order, 
-  // causing the logic to crash; add the volatile modifier to prevent the ordering
-  // Fuck you, msvc. Go eating shit.
+  bool is_escape_connecting_new_gostring = false;
+
+  std::set<Point> original_gostring = get_go_string(board, row, col);
+
+  for_neighbor(board, escape_r, escape_c, neighbor_r, neighbor_c) {
+    if (
+      in_board(board, neighbor_r, neighbor_c)
+      && get_piece(board, neighbor_r, neighbor_c) == escaping_player 
+      && original_gostring.count({ neighbor_r, neighbor_c }) == 0
+    ) {
+      is_escape_connecting_new_gostring = true;
+      break;
+    }
+  }
+
+  /* When compiling on Windows, msvc will place the placement after get_qi out of order,
+   * causing the logic to crash; add the volatile modifier to prevent the ordering
+   * Fuck you, msvc. Go eating shit.
+   */
   volatile Board* __board = board; 
   place_piece((Board*) __board, escape_r, escape_c, escaping_player);
 
-  if (get_qi(board, escape_r, escape_c) > 2) {
+  unsigned remain_qi = get_qi(board, escape_r, escape_c);
+  if (remain_qi > 2) {
     return { false, 0, {} };
   }
-
-  if (get_qi(board, escape_r, escape_c) < 2) {
+  if (remain_qi < 2) {
     return { true, 1, { { escape_r, escape_c } } };
+  }
+
+  for_neighbor(board, escape_r, escape_c, r, c) {
+    if (
+      in_board(board, r, c)
+      && get_piece(board, r, c) == chasing_player
+      && get_qi(board, r, c) < 2
+    ) {
+      return { false, 0, {} };
+    }
+  }
+
+  std::set<Point> after_escaping_gostring = get_go_string(board, escape_r, escape_c);
+
+  if (is_escape_connecting_new_gostring) {
+    /* check newly connected points' neighbor opponent pieces */
+    for (const auto& [r, c] : after_escaping_gostring) {
+      if (original_gostring.count({ r, c }) > 0) {
+        continue;
+      }
+
+      for_neighbor(board, r, c, neighbor_r, neighbor_c) {
+        if (
+          in_board(board, neighbor_r, neighbor_c)
+          && get_piece(board, neighbor_r, neighbor_c) == chasing_player
+          && get_qi(board, neighbor_r, neighbor_c) <= 1
+        ) {
+          return { false, 0, {} };
+        }
+      }
+    }
   }
 
   bool is_captured = false;
   int escape_steps = 0;
   std::set<Point> escape_path = {};
 
-  for_neighbor(board, escape_r, escape_c, chase_r, chase_c) {
-    if (
-      ! in_board(board, chase_r, chase_c)
-      || ! is_valid_move(board, chase_r, chase_c, chasing_player)
-    ) {
+  std::set<Point> qi_points = get_all_qi_point_of_gostring(board, after_escaping_gostring);
+  assert(qi_points.size() == 2);
+
+  for (auto [chase_r, chase_c] : qi_points) {
+    if (!is_valid_move(board, chase_r, chase_c, chasing_player)) {
       continue;
     }
 
@@ -93,27 +193,12 @@ analyze_go_string(Board* board, int row, int col) {
     volatile Board* __after_chasing_board = after_chasing_board;
     place_piece((Board*) __after_chasing_board, chase_r, chase_c, chasing_player);
 
-    bool is_opponents_string_less_than_2_qi = false;
-    for_neighbor(after_chasing_board, escape_r, escape_c, r, c) {
-      if (
-        !in_board(after_chasing_board, r, c)
-        || get_piece(after_chasing_board, r, c) != chasing_player
-      ) {
-        continue;
-      }
-
-      if (get_qi(after_chasing_board, r, c) < 2) {
-        is_opponents_string_less_than_2_qi = true;
-        break;
-      }
-
-    }
-    if (is_opponents_string_less_than_2_qi) { // escaped
+    if (get_qi(after_chasing_board, chase_r, chase_c) <= 1) {
       continue;
     }
 
     auto [sub_is_captured, sub_escape_steps, sub_escape_path] =
-      analyze_go_string(after_chasing_board, escape_r, escape_c);
+      analyze_go_string_agent(after_chasing_board, escape_r, escape_c);
 
     if (sub_is_captured) {
       is_captured = true;
