@@ -6,18 +6,19 @@ __all__ = [
 ]
 
 class ResidualConvBlock(nn.Module):
-  def __init__(self, input_channels, output_channels):
+  def __init__(self, channels):
     super(ResidualConvBlock, self).__init__()
     self.model = nn.Sequential(
-      nn.Conv2d(input_channels, output_channels, kernel_size=3, padding=1, bias=False),
-      nn.BatchNorm2d(output_channels),
+      nn.BatchNorm2d(channels),
       nn.LeakyReLU(),
-      nn.Conv2d(output_channels, output_channels, kernel_size=3, padding=1, bias=False),
-      nn.BatchNorm2d(output_channels),
+      nn.Conv2d(channels, channels, kernel_size=3, padding=1, bias=False),
+      nn.BatchNorm2d(channels),
+      nn.LeakyReLU(),
+      nn.Conv2d(channels, channels, kernel_size=3, padding=1, bias=False),
     )
 
   def forward(self, x):
-    return nn.functional.leaky_relu(self.model(x) + x)
+    return self.model(x) + x
 
 class MultiScaleConvBlock(nn.Module):
   def __init__(self, input_channels, output_channels, bias=True):
@@ -56,14 +57,15 @@ class ZhuGo(nn.Module):
     length = len(residual_channels)
     residual_layers = []
     for idx, (channel, depth) in enumerate(zip(residual_channels, residual_depths)):
-      residual_layers += [ResidualConvBlock(channel, channel) for _ in range(depth)]
+      residual_layers += [ResidualConvBlock(channel) for _ in range(depth)] + [
+        nn.BatchNorm2d(channel),
+        nn.LeakyReLU(),
+      ]
       if idx < length - 1:
         next_channel = residual_channels[idx + 1]
         residual_layers += [
+          nn.Dropout2d(0.1),
           MultiScaleConvBlock(channel, next_channel, bias=False),
-          nn.BatchNorm2d(next_channel),
-          nn.LeakyReLU(),
-          nn.Dropout2d(0.2),
         ]
 
     first_channel = residual_channels[0]
@@ -72,8 +74,6 @@ class ZhuGo(nn.Module):
     self.shared = nn.Sequential(
       # input layers
       nn.Conv2d(input_channels, first_channel, kernel_size=5, padding=2, bias=False),
-      nn.BatchNorm2d(first_channel),
-      nn.LeakyReLU(),
 
       # residual layers
       *residual_layers,
