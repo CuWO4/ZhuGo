@@ -45,6 +45,22 @@ class TkGUI(UI):
 
   def update(self, game_state: GameState):
     self.game_state_queue.put(GameStateProxy(game_state))
+    
+def cal_transparent(background_color: str, foreground_color: str, alpha: int) -> str:
+  def hex_to_rgb(hex_color: str) -> tuple:
+    return tuple(int(hex_color[i:i+2], 16) for i in (1, 3, 5))
+
+  def rgb_to_hex(r: int, g: int, b: int) -> str:
+    return f'#{r:02X}{g:02X}{b:02X}'
+
+  B_R, B_G, B_B = hex_to_rgb(background_color)
+  F_R, F_G, F_B = hex_to_rgb(foreground_color)
+  
+  R_R = (1 - alpha / 255) * B_R + (alpha / 255) * F_R
+  R_G = (1 - alpha / 255) * B_G + (alpha / 255) * F_G
+  R_B = (1 - alpha / 255) * B_B + (alpha / 255) * F_B
+  
+  return rgb_to_hex(int(R_R), int(R_G), int(R_B))
 
 class TkRenderer:
   def __init__(
@@ -55,7 +71,7 @@ class TkRenderer:
     row_n: int, col_n: int,
     cell_size: int=40,
     padding: int=60,
-    back_ground_color: str = '#CDAC6A',
+    backgroundd_color: str = '#CDAC6A',
     winning_rate_bar_height: int = 25,
     font: str = 'Consolas'
   ):
@@ -73,7 +89,7 @@ class TkRenderer:
     
     self.winning_rate_bar_height: int = winning_rate_bar_height
 
-    self.back_ground_color = back_ground_color
+    self.backgroundd_color = backgroundd_color
 
     self.font: str = font
     
@@ -87,7 +103,7 @@ class TkRenderer:
       height=self.window_h + padding,
       bd=0,
       highlightthickness=0,
-      bg=self.back_ground_color
+      bg=self.backgroundd_color
     )
     self.canvas.pack()
 
@@ -150,7 +166,7 @@ class TkRenderer:
     cy = self.window_h
     self.canvas.create_oval(
       cx - radius, cy - radius, cx + radius, cy + radius,
-      fill=color, outline=self.back_ground_color, width=10
+      fill=color, outline=self.backgroundd_color, width=10
     )
 
   def draw_lines(self):
@@ -226,6 +242,40 @@ class TkRenderer:
       cx - radius, cy - radius, cx + radius, cy + radius,
       fill=color, outline=color
     )
+    
+  def draw_semitransparent_mcts_point(
+    self,
+    x: int, y: int, 
+    color: str, alpha: int,
+    visited_time: int, q: float
+  ):
+    color = cal_transparent(self.backgroundd_color, color, alpha)
+    line_color = cal_transparent('#000000', color, alpha)
+    self.draw_piece(x, y, color)
+    
+    cx = self.padding + x * self.cell_size
+    cy = self.padding + y * self.cell_size
+
+    self.canvas.create_line(
+      cx,
+      cy - self.cell_size // 2 if y > 0 else cy,
+      cx,
+      cy + self.cell_size // 2 if y < self.row_n - 1 else cy,
+      fill = line_color
+    )
+    
+    self.canvas.create_line(
+      cx - self.cell_size // 2 if x > 0 else cx,
+      cy,
+      cx + self.cell_size // 2 if x < self.col_n - 1 else cx,
+      cy,
+      fill = line_color
+    )
+    
+    vertical_bias = 5
+    self.canvas.create_text(cx, cy - vertical_bias, text=f'{q:.2f}', font=(self.font, 10), fill='black')
+    self.canvas.create_text(cx, cy + vertical_bias, text=f'{int(visited_time)}', font=(self.font, 10), fill='black')
+    
 
   def draw_mcts_state(self):
     if self.cur_mcts_data is None:
@@ -238,6 +288,7 @@ class TkRenderer:
     for x in range(self.col_n):
       for y in range(self.row_n):
         q, visited_time = self.cur_mcts_data.get(row=y, col=x)
+
         if visited_time < 5:
           continue
         
@@ -245,6 +296,7 @@ class TkRenderer:
           candidate_color = '#0CE6E6' # HSV: 180 95 90
           self.draw_piece(x, y, '#5A5A5A', 2)
           self.draw_piece(x, y, '#262626', 1)
+          alpha = 255
         else:
           color_table = [
                                #   H  S  V
@@ -262,13 +314,13 @@ class TkRenderer:
             if q <= upper_bound:
               candidate_color = color
               break
-        self.draw_piece(x, y, candidate_color)
-
-        cx = self.padding + x * self.cell_size
-        cy = self.padding + y * self.cell_size
-        vertical_bias = 5
-        self.canvas.create_text(cx, cy - vertical_bias, text=f'{q:.2f}', font=(self.font, 10), fill='black')
-        self.canvas.create_text(cx, cy + vertical_bias, text=f'{int(visited_time)}', font=(self.font, 10), fill='black')
+            
+          def compress_f(x):
+            return 1 - 1 / (x + 1)  
+          
+          alpha = int(255 * (0.5 + 0.5 *compress_f(visited_time / 500)))
+            
+        self.draw_semitransparent_mcts_point(x, y, candidate_color, alpha, visited_time, q)        
 
   def draw_mcts_q_bar(self):
     if self.cur_mcts_data.win_rate is None:
