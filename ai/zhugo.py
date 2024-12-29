@@ -17,6 +17,9 @@ class ResidualConvBlock(nn.Module):
       nn.Conv2d(channels, channels, kernel_size=3, padding=1, bias=False),
     )
 
+    nn.init.kaiming_normal_(self.model[2].weight)
+    nn.init.kaiming_normal_(self.model[5].weight)
+
   def forward(self, x):
     return self.model(x) + x
 
@@ -30,6 +33,10 @@ class MultiScaleConvBlock(nn.Module):
     self.conv3x3 = nn.Conv2d(input_channels, channels3x3, kernel_size=3, padding=1, bias=bias)
     self.conv5x5 = nn.Conv2d(input_channels, channels5x5, kernel_size=5, padding=2, bias=bias)
     self.conv7x7 = nn.Conv2d(input_channels, channels7x7, kernel_size=7, padding=3, bias=bias)
+
+    nn.init.kaiming_normal_(self.conv3x3.weight)
+    nn.init.kaiming_normal_(self.conv5x5.weight)
+    nn.init.kaiming_normal_(self.conv7x7.weight)
 
   def forward(self, x):
     y3x3 = self.conv3x3(x)
@@ -83,6 +90,9 @@ class ZhuGo(nn.Module):
       nn.BatchNorm2d(bottleneck_channels),
       nn.LeakyReLU(),
     )
+    
+    nn.init.kaiming_normal_(self.shared[0].weight)
+    nn.init.kaiming_normal_(self.shared[-3].weight)
 
     # policy head
 
@@ -95,6 +105,10 @@ class ZhuGo(nn.Module):
       nn.LeakyReLU(),
       nn.Conv2d(policy_middle_channel, 1, kernel_size=1)
     )
+    
+    nn.init.kaiming_normal_(self.policy[0].weight)
+    nn.init.kaiming_normal_(self.policy[3].weight)
+    nn.init.xavier_normal_(self.policy[-1].weight)
 
     # value head
 
@@ -112,6 +126,11 @@ class ZhuGo(nn.Module):
       nn.Linear(value_middle_width, 1),
       nn.Sigmoid(),
     )
+    
+    nn.init.kaiming_normal_(self.value[0].weight)
+    nn.init.kaiming_normal_(self.value[3].weight)
+    nn.init.kaiming_normal_(self.value[-5].weight)
+    nn.init.xavier_normal_(self.value[-2].weight)
 
   def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     shared = self.shared(x)
