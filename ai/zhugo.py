@@ -22,6 +22,79 @@ class ResidualConvBlock(nn.Module):
 
   def forward(self, x):
     return self.model(x) + x
+  
+#
+# nested bottleneck residual network
+# <https://github.com/lightvector/KataGo/blob/master/docs/KataGoMethods.md#nested-bottleneck-residual-nets>
+#
+#   |
+#   |----.
+#   |    |
+#   |   BN
+#   |  ReLU
+#   | Conv1x1  C -> C/2
+#   |    |
+#   |    |----.   
+#   |    |    |
+#   |    |   BN
+#   |    |  ReLU
+#   |    | Conv3x3  C/2 -> C/2
+#   |    |   BN
+#   |    |  ReLU
+#   |    | Conv3x3  C/2 -> C/2
+#   |    V    |
+#   |   [+]<--`
+#   |    |
+#   |    |----.   
+#   |    |    |
+#   |    |   BN
+#   |    |  ReLU
+#   |    | Conv3x3  C/2 -> C/2
+#   |    |   BN
+#   |    |  ReLU
+#   |    | Conv3x3  C/2 -> C/2
+#   |    V    |
+#   |   [+]<--`
+#   |    |
+#   |   BN
+#   |  ReLU
+#   | Conv1x1  C/2 -> C
+#   V    |
+#  [+]<--`
+#   |
+#   V
+#
+
+class ZhuGoResidualConvBlock(nn.Module):
+  def __init__(self, channels):
+    super(ZhuGoResidualConvBlock, self).__init__()
+
+    inner_channels = channels // 2
+    
+    self.encoder_conv1x1 = nn.Sequential(
+      nn.BatchNorm2d(channels),
+      nn.LeakyReLU(),
+      nn.Conv2d(channels, inner_channels, kernel_size=1, bias=False),
+    )
+    
+    self.inner_residual_block1 = ResidualConvBlock(inner_channels)
+    self.inner_residual_block2 = ResidualConvBlock(inner_channels)
+    
+    self.decoder_conv1x1 = nn.Sequential(
+      nn.BatchNorm2d(inner_channels),
+      nn.LeakyReLU(),
+      nn.Conv2d(inner_channels, channels, kernel_size=1, bias=False)
+    )
+
+    nn.init.kaiming_normal_(self.encoder_conv1x1[-1].weight)
+    nn.init.kaiming_normal_(self.decoder_conv1x1[-1].weight)
+
+  def forward(self, x):
+    out = self.encoder_conv1x1(x)
+    out = self.inner_residual_block1(out) + out
+    out = self.inner_residual_block2(out) + out
+    out = self.decoder_conv1x1(out)
+    return out
 
 class MultiScaleConvBlock(nn.Module):
   def __init__(self, input_channels, output_channels, bias=True):
@@ -64,7 +137,7 @@ class ZhuGo(nn.Module):
     length = len(residual_channels)
     residual_layers = []
     for idx, (channel, depth) in enumerate(zip(residual_channels, residual_depths)):
-      residual_layers += [ResidualConvBlock(channel) for _ in range(depth)] + [
+      residual_layers += [ZhuGoResidualConvBlock(channel) for _ in range(depth)] + [
         nn.BatchNorm2d(channel),
         nn.LeakyReLU(),
       ]
