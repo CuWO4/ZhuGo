@@ -96,10 +96,14 @@ class Board():
       Player.white: 'o',
       Player.black: 'x'
     }
-    str = ''
+    str = '  '
+    for col in range(self.num_cols):
+      str += ' ' + chr(ord('A') + col)
+    str += '\n'
     for row in range(1, 1 + self.num_rows):
+      str += f'{row:>2d}'
       for col in range(1, 1 + self.num_cols):
-        str += STONE_TO_CHAR[self.get(Point(row=row, col=col))]
+        str += ' ' + STONE_TO_CHAR[self.get(Point(row=row, col=col))]
       str += '\n'
     return str
 
