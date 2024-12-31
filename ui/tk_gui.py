@@ -28,23 +28,44 @@ class GameStateProxy: # GameState includes py capsule object, cannot be serializ
     
 
 class TkGUI(UI):
-  def __init__(
-    self,
-    move_queue: multiprocessing.Queue,
-    mcts_queue: multiprocessing.Queue = None,
-    row_n: int = 19, col_n: int = 19
-  ):
-    super().__init__(move_queue, mcts_queue, row_n, col_n)
+  def __init__(self, row_n: int = 19, col_n: int = 19):
+    super().__init__(row_n, col_n)
+
     self.game_state_queue = multiprocessing.Queue()
+    self.move_queue = multiprocessing.Queue()
+    self.mcts_queue = multiprocessing.Queue()
 
     self.renderer_process = multiprocessing.Process(
       target=TkRenderer, 
-      args=(self.game_state_queue, move_queue, mcts_queue, row_n, col_n)
+      args=(self.game_state_queue, self.move_queue, self.mcts_queue, row_n, col_n)
     )
     self.renderer_process.start()
 
   def update(self, game_state: GameState):
+    self._clear_move_queue()
     self.game_state_queue.put(GameStateProxy(game_state))
+
+  def display_mcts(self, data: MCTSData):
+    self.mcts_queue.put(data)
+    
+  def get_move(self, block: bool = True) -> Move | None:
+    if not block:
+      return self._dequeue_move()
+    else:
+      while True:
+        move = self._dequeue_move()
+        if move is not None:
+          return move
+    
+  def _dequeue_move(self) -> Move | None:
+    if self.move_queue.empty():
+      return None
+    return self.move_queue.get()
+
+  def _clear_move_queue(self):
+    while not self.move_queue.empty():
+      self.move_queue.get()
+  
     
 def cal_transparent(background_color: str, foreground_color: str, alpha: int) -> str:
   def hex_to_rgb(hex_color: str) -> tuple:
@@ -414,19 +435,19 @@ class TkRenderer:
     '''indexing starts from 1'''
     assert self.move_queue is not None
     move = Move.play(Point(row=row, col=col))
-    UI.enqueue_move(self.move_queue, move)
+    self.move_queue.put(move)
 
   def push_pass_turn(self):
     assert self.move_queue is not None
     move = Move.pass_turn()
-    UI.enqueue_move(self.move_queue, move)
+    self.move_queue.put(move)
     
   def push_resign(self):
     assert self.move_queue is not None
     move = Move.resign()
-    UI.enqueue_move(self.move_queue, move)
+    self.move_queue.put(move)
     
   def push_undo(self):
     assert self.move_queue is not None
     move = Move.undo()
-    UI.enqueue_move(self.move_queue, move)
+    self.move_queue.put(move)
