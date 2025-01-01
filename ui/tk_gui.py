@@ -12,22 +12,6 @@ __all__ = [
   'TkGUI'
 ]
 
-class GameStateProxy: # GameState includes py capsule object, cannot be serialized
-  def __init__(self, game_state: GameState) -> None:
-    self.next_player = game_state.next_player
-
-    self.stones = [
-      [game_state.board.get(Point(row = row + 1, col = col + 1)) 
-       for col in range(game_state.board.num_cols)]
-      for row in range(game_state.board.num_rows)
-    ]
-
-    self.is_over = game_state.is_over()
-    if self.is_over:
-      self.winner = game_state.winner()
-      self.game_result = game_state.game_result()
-    
-
 class TkGUI(UI):
   def __init__(self, row_n: int = 19, col_n: int = 19):
     super().__init__(row_n, col_n)
@@ -49,7 +33,7 @@ class TkGUI(UI):
 
   def update(self, game_state: GameState):
     self._clear_moves()
-    self.game_state_connection.send(GameStateProxy(game_state))
+    self.game_state_connection.send(game_state)
 
   def display_mcts(self, data: MCTSData):
     self.mcts_connection.send(data)
@@ -97,7 +81,7 @@ class TkRenderer:
     self.game_state_connection: conn.Connection = game_state_connection
     self.move_connection: conn.Connection = move_connection
     self.mcts_connection: conn.Connection = mcts_connection
-    self.cur_game_state: GameStateProxy | None = None
+    self.cur_game_state: GameState | None = None
     self.cur_mcts_data: MCTSData | None = None
     self.refresh_ms: int = 100
 
@@ -247,7 +231,7 @@ class TkRenderer:
   def draw_pieces(self):
     for x in range(self.col_n):
       for y in range(self.row_n):
-        stone = self.cur_game_state.stones[y][x]
+        stone = self.cur_game_state.board.get(Point(row = y + 1, col = x + 1))
         if stone == Player.black:
           self.draw_piece(x, y, "black")
         elif stone == Player.white:
@@ -386,9 +370,9 @@ class TkRenderer:
     render_win_rate_text(Player.white, white_win_rate)
     
   def draw_message(self):
-    if self.cur_game_state.is_over:
-      winner = 'white' if self.cur_game_state.winner == Player.white else 'black'
-      game_result = self.cur_game_state.game_result
+    if self.cur_game_state.is_over():
+      winner = 'white' if self.cur_game_state.winner() == Player.white else 'black'
+      game_result = self.cur_game_state.game_result()
       message = f'{winner} wins  {game_result}'
       self.canvas.create_text(
         self.window_w / 2, self.padding / 2,
