@@ -56,7 +56,6 @@ def load(
   device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
 ) -> tuple[torch.nn.Module, dict, SummaryWriter]:
   model_json = os.path.join(path, MODEL_SETTING_FILE)
-  print(model_json)
   with open(model_json, "r") as f:
     model_params = json.load(f)
   
