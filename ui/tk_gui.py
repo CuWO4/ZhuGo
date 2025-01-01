@@ -5,7 +5,8 @@ from go.goboard import GameState, Move, Point
 from go.gotypes import Player
 
 import tkinter as tk
-import multiprocessing
+import multiprocessing as mp
+import multiprocessing.connection as conn
 
 __all__ = [
   'TkGUI'
@@ -31,40 +32,37 @@ class TkGUI(UI):
   def __init__(self, row_n: int = 19, col_n: int = 19):
     super().__init__(row_n, col_n)
 
-    self.game_state_queue = multiprocessing.Queue()
-    self.move_queue = multiprocessing.Queue()
-    self.mcts_queue = multiprocessing.Queue()
+    self.game_state_connection, renderer_game_state_connection = mp.Pipe()
+    self.move_connection, renderer_move_connection = mp.Pipe()
+    self.mcts_connection, renderer_mcts_connection = mp.Pipe()
 
-    self.renderer_process = multiprocessing.Process(
+    self.renderer_process = mp.Process(
       target=TkRenderer, 
-      args=(self.game_state_queue, self.move_queue, self.mcts_queue, row_n, col_n)
+      args=(
+        renderer_game_state_connection, 
+        renderer_move_connection, 
+        renderer_mcts_connection, 
+        row_n, col_n
+      )
     )
     self.renderer_process.start()
 
   def update(self, game_state: GameState):
-    self._clear_move_queue()
-    self.game_state_queue.put(GameStateProxy(game_state))
+    self._clear_moves()
+    self.game_state_connection.send(GameStateProxy(game_state))
 
   def display_mcts(self, data: MCTSData):
-    self.mcts_queue.put(data)
+    self.mcts_connection.send(data)
     
   def get_move(self, block: bool = True) -> Move | None:
-    if not block:
-      return self._dequeue_move()
+    if block:
+      return self.move_connection.recv()
     else:
-      while True:
-        move = self._dequeue_move()
-        if move is not None:
-          return move
-    
-  def _dequeue_move(self) -> Move | None:
-    if self.move_queue.empty():
-      return None
-    return self.move_queue.get()
+      return self.move_connection.recv() if self.move_connection.poll() else None
 
-  def _clear_move_queue(self):
-    while not self.move_queue.empty():
-      self.move_queue.get()
+  def _clear_moves(self):
+    while self.move_connection.poll():
+      self.move_connection.recv()
   
     
 def cal_transparent(background_color: str, foreground_color: str, alpha: int) -> str:
@@ -86,9 +84,9 @@ def cal_transparent(background_color: str, foreground_color: str, alpha: int) ->
 class TkRenderer:
   def __init__(
     self,
-    game_state_queue: multiprocessing.Queue,
-    move_queue: multiprocessing.Queue,
-    mcts_queue: multiprocessing.Queue,
+    game_state_connection: conn.Connection,
+    move_connection: conn.Connection,
+    mcts_connection: conn.Connection,
     row_n: int, col_n: int,
     cell_size: int=40,
     padding: int=60,
@@ -96,9 +94,9 @@ class TkRenderer:
     winning_rate_bar_height: int = 25,
     font: str = 'Consolas'
   ):
-    self.game_state_queue: multiprocessing.Queue = game_state_queue
-    self.move_queue: multiprocessing.Queue = move_queue
-    self.mcts_queue: multiprocessing.Queue | None = mcts_queue
+    self.game_state_connection: conn.Connection = game_state_connection
+    self.move_connection: conn.Connection = move_connection
+    self.mcts_connection: conn.Connection = mcts_connection
     self.cur_game_state: GameStateProxy | None = None
     self.cur_mcts_data: MCTSData | None = None
     self.refresh_ms: int = 100
@@ -146,18 +144,18 @@ class TkRenderer:
     self.root.bind("<Control-z>", self.on_ctrl_z)
     self.root.bind("<Tab>", self.on_tab)
 
-    def check_queue():
-      while not self.game_state_queue.empty():
-        self.cur_game_state = self.game_state_queue.get()
+    def check_update():
+      while self.game_state_connection.poll():
+        self.cur_game_state = self.game_state_connection.recv()
 
-      while self.mcts_queue is not None and not self.mcts_queue.empty():
-        self.cur_mcts_data = self.mcts_queue.get()
+      while self.mcts_connection.poll():
+        self.cur_mcts_data = self.mcts_connection.recv()
         
       self.draw_board()
 
-      self.root.after(self.refresh_ms, check_queue)
+      self.root.after(self.refresh_ms, check_update)
 
-    self.root.after(self.refresh_ms, check_queue)
+    self.root.after(self.refresh_ms, check_update)
     self.root.mainloop()
 
   def draw_board(self):
@@ -414,40 +412,32 @@ class TkRenderer:
     x = round((event.x - self.padding) / self.cell_size)
     y = round((event.y - self.padding) / self.cell_size)
     if 0 <= x < self.col_n and 0 <= y < self.row_n:
-      self.push_play(y + 1, x + 1)
+      self.send_play(y + 1, x + 1)
 
   def on_pass_turn_button(self):
-    self.push_pass_turn()
+    self.send_pass_turn()
 
   def on_resign_button(self):
-    self.push_resign()
+    self.send_resign()
 
   def on_undo_botton(self):
-    self.push_undo()
+    self.send_undo()
     
   def on_tab(self, event: tk.Event):
-    self.push_pass_turn()
+    self.send_pass_turn()
     
   def on_ctrl_z(self, event: tk.Event):
-    self.push_undo()
+    self.send_undo()
     
-  def push_play(self, row, col):
+  def send_play(self, row, col):
     '''indexing starts from 1'''
-    assert self.move_queue is not None
-    move = Move.play(Point(row=row, col=col))
-    self.move_queue.put(move)
+    self.move_connection.send(Move.play(Point(row=row, col=col)))
 
-  def push_pass_turn(self):
-    assert self.move_queue is not None
-    move = Move.pass_turn()
-    self.move_queue.put(move)
+  def send_pass_turn(self):
+    self.move_connection.send(Move.pass_turn())
     
-  def push_resign(self):
-    assert self.move_queue is not None
-    move = Move.resign()
-    self.move_queue.put(move)
+  def send_resign(self):
+    self.move_connection.send(Move.resign())
     
-  def push_undo(self):
-    assert self.move_queue is not None
-    move = Move.undo()
-    self.move_queue.put(move)
+  def send_undo(self):
+    self.move_connection.send(Move.undo())
