@@ -1,7 +1,7 @@
 import copy
 from go.gotypes import Player, Point
 import go.scoring as scoring
-from cboard.cboard import cBoard
+from cboard.cboard import cBoard, does_violate_ko
 
 __all__ = [
   'Board',
@@ -22,23 +22,6 @@ class Board():
       self.c_board: cBoard = cBoard(num_rows, num_cols)
     else:
       self.c_board = c_board
-
-  def to_board_data(self):
-    return [
-      [self.c_board.get(row, col) for col in range(self.num_cols)]
-      for row in range(self.num_rows)
-    ]
-    
-  @staticmethod
-  def from_board_data(borad_data):
-    rows = len(borad_data)
-    cols = len(borad_data[0])
-
-    c_board = cBoard(rows, cols)
-    for r, row in enumerate(borad_data):
-      for c, player in enumerate(row):
-        c_board.place_stone(player, r, c)
-    return Board(rows, cols, c_board)
       
   @staticmethod
   def c_player_to_py_player(c_player: int) -> Player:
@@ -96,10 +79,14 @@ class Board():
       Player.white: 'o',
       Player.black: 'x'
     }
-    str = ''
+    str = '  '
+    for col in range(self.num_cols):
+      str += ' ' + chr(ord('A') + col)
+    str += '\n'
     for row in range(1, 1 + self.num_rows):
+      str += f'{row:>2d}'
       for col in range(1, 1 + self.num_cols):
-        str += STONE_TO_CHAR[self.get(Point(row=row, col=col))]
+        str += ' ' + STONE_TO_CHAR[self.get(Point(row=row, col=col))]
       str += '\n'
     return str
 
@@ -198,29 +185,19 @@ class GameState():
     '''
     self.board: Board = board
     self.next_player: Player = next_player
-    self.previous_state = previous_state
+    self.previous_state: GameState = previous_state
     self.komi: float = komi
-    if previous_state is None:
-      self.previous_states = frozenset()
-    else:
-      self.previous_states = frozenset(
-        previous_state.previous_states |
-        {(previous_state.next_player, previous_state.board.hash())}
-      )
     self.last_move: Move = last_move
 
     self.is_privileged_mode: bool = is_privileged_mode
     
-  def to_game_state_data(self):
-    return self.board.to_board_data(), self.next_player, self.komi, self.previous_states
-  
-  @staticmethod
-  def from_game_state_data(game_state_data):
-    board_data, next_player, komi, previous_states = game_state_data
-    game_state = GameState(Board.from_board_data(board_data), next_player, None, None, komi)
-    game_state.previous_states = previous_states
-    return game_state
-
+  # ignore previous states which is only useful for undo move
+  def __getstate__(self) -> dict:
+    state = self.__dict__.copy()
+    if state['previous_state'] is not None:
+      state['previous_state'].previous_state = None
+    return state
+    
   def apply_move(self, move: Move):
     """Return the new GameState after applying the move."""
     assert not self.is_over()
@@ -252,10 +229,13 @@ class GameState():
   def does_move_violate_ko(self, player: Player, move: Move) -> bool:
     if not move.is_play:
       return False
-    next_board = copy.deepcopy(self.board)
-    next_board.place_stone(player, move.point)
-    next_situation = (player.other, next_board.hash())
-    return next_situation in self.previous_states
+    if self.previous_state is None:
+      return False
+    c_board = self.board.c_board
+    c_player = Board.py_player_to_c_player(player)
+    c_row, c_col = move.point.row - 1, move.point.col - 1
+    c_last_board = self.previous_state.board.c_board
+    return does_violate_ko(c_board, c_player, c_row, c_col, c_last_board)
 
   def is_valid_move(self, move: Move) -> bool:
     if self.is_over():
@@ -305,9 +285,6 @@ class GameState():
   def is_ancestor_of(self, other, max_n: int) -> bool:
     if not isinstance(other, GameState):
       return False
-    
-    if other in self.previous_states:
-      return True
     
     state: GameState = other
     for _ in range(max_n + 1):

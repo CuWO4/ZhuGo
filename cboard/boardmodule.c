@@ -1,8 +1,12 @@
 #include <Python.h>
 
-#define NDEBUG
+#include "board.h"
+#include "ko.h"
 
-#include "board.c"
+void py_destructor(PyObject* capsule) {
+  Board* board = PyCapsule_GetPointer(capsule, "Board");
+  delete_board(board);
+}
 
 // Python wrapper for new_board
 static PyObject* py_new_board(PyObject* self, PyObject* args) {
@@ -11,7 +15,7 @@ static PyObject* py_new_board(PyObject* self, PyObject* args) {
     return NULL;
   }
   Board* board = new_board(rows, cols);
-  return PyCapsule_New(board, "Board", NULL);
+  return PyCapsule_New(board, "Board", py_destructor);
 }
 
 // Python wrapper for delete_board
@@ -33,7 +37,7 @@ static PyObject* py_clone_board(PyObject* self, PyObject* args) {
   }
   Board* board = PyCapsule_GetPointer(board_capsule, "Board");
   Board* cloned = clone_board(board);
-  return PyCapsule_New(cloned, "Board", NULL);
+  return PyCapsule_New(cloned, "Board", py_destructor);
 }
 
 // Python wrapper for get_piece
@@ -114,6 +118,61 @@ static PyObject* py_hash(PyObject* self, PyObject* args) {
   return PyLong_FromUnsignedLongLong(hash_value);
 }
 
+#ifndef MAX_BUFFER_SIZE
+#define MAX_BUFFER_SIZE 2048
+#endif
+static PyObject* py_serialize(PyObject* self, PyObject* args) {
+  PyObject* board_capsule;
+  if (!PyArg_ParseTuple(args, "O", &board_capsule)) {
+    return NULL;
+  }
+
+  Board* board = PyCapsule_GetPointer(board_capsule, "Board");
+
+  static char buf[MAX_BUFFER_SIZE];
+  size_t size = serialize(board, buf);
+
+  return PyBytes_FromStringAndSize(buf, size);
+}
+
+static PyObject* py_deserialize(PyObject* self, PyObject* args) {
+  PyObject* py_buf;
+  if (!PyArg_ParseTuple(args, "O", &py_buf)) {
+    return NULL;
+  }
+
+  char* buf = PyBytes_AsString(py_buf);
+
+  Board* board = deserialize(buf);
+  return PyCapsule_New(board, "Board", py_destructor);
+}
+#undef MAX_BUFFER_SIZE
+
+static PyObject* py_does_violate_ko(PyObject* self, PyObject* args) {
+  PyObject* board_capsule;
+  PyObject* last_board_capsule;
+  int player;
+  int row, col;
+
+  if (!PyArg_ParseTuple(args, "OiiiO", &board_capsule, &player, &row, &col, &last_board_capsule)) {
+    return NULL;
+  }
+
+  Board* board = PyCapsule_GetPointer(board_capsule, "Board");
+  Board* last_board = PyCapsule_GetPointer(last_board_capsule, "Board");
+
+  if (!board || !last_board) {
+    return NULL;
+  }
+
+  if (does_violate_ko(board, player, row, col, last_board)) {
+    Py_RETURN_TRUE;
+  }
+  else {
+    Py_RETURN_FALSE;
+  }
+}
+
 // Methods table
 static PyMethodDef BoardMethods[] = {
   {"new_board", py_new_board, METH_VARARGS, "Create a new board"},
@@ -125,6 +184,9 @@ static PyMethodDef BoardMethods[] = {
   {"is_valid_move", py_is_valid_move, METH_VARARGS, "Check if a move is valid"},
   {"place_piece", py_place_piece, METH_VARARGS, "Place a piece on the board"},
   {"hash", py_hash, METH_VARARGS, "get zobrist hash of board"},
+  {"serialize", py_serialize, METH_VARARGS, "Serialize the board"},
+  {"deserialize", py_deserialize, METH_VARARGS, "Deserialize the board"},
+  {"does_violate_ko", py_does_violate_ko, METH_VARARGS, "check ko violation"},
   {NULL, NULL, 0, NULL}
 };
 

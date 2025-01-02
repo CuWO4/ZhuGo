@@ -1,53 +1,10 @@
+#include "board.h"
+
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
 #include <assert.h>
 #include <stdint.h>
-
-enum {
-  EMPTY = 0,
-  BLACK = 1,
-  WHITE = 2,
-};
-typedef char Piece;
-
-typedef struct {
-  int rows;
-  int cols;
-
-  size_t mem_size;
-  void* mem;
-
-  Piece** pieces;
-  bool is_qi_updated;
-  unsigned** qi_cache;
-  uint32_t** qi_pos;
-  uint64_t zobrist_hash;
-} Board;
-
-Board* new_board(int rows, int cols);
-void delete_board(Board* board);
-Board* clone_board(Board* board);
-Piece get_piece(Board* board, int row, int col);
-unsigned get_qi(Board* board, int row, int col);
-void get_random_qi_pos(unsigned* pos_row, unsigned* pos_col, Board* board, int row, int col);
-bool is_valid_move(Board* board, int row, int col, Piece player);
-void place_piece(Board* board, int row, int col, Piece player);
-uint64_t hash(Board* board);
-
-
-static int dx[4] = { -1, 1, 0, 0 };
-static int dy[4] = { 0, 0, -1, 1 };
-
-inline Piece other(Piece piece) {
-  assert(piece != EMPTY);
-  if (piece == BLACK) {
-    return WHITE;
-  }
-  else {
-    return BLACK;
-  }
-}
 
 uint64_t hash_murmur(uint64_t x) {
   uint64_t h = x;
@@ -119,15 +76,6 @@ Board* clone_board(Board* board) {
   return cloned;
 }
 
-inline bool in_board(Board* board, int row, int col) {
-  return 0 <= row && row < board->rows && 0 <= col && col < board->cols;
-}
-
-inline Piece get_piece(Board* board, int row, int col) {
-  assert(in_board(board, row, col));
-  return board->pieces[row][col];
-}
-
 inline void add_piece(Board* board, int row, int col, Piece player) {
   assert(get_piece(board, row, col) == EMPTY);
   board->pieces[row][col] = player;
@@ -180,10 +128,7 @@ unsigned update_get_qi(
 
   unsigned qi = 0;
 
-  for (int k = 0; k < 4; k++) {
-    int r = row + dx[k];
-    int c = col + dy[k];
-
+  for_neighbor(board, row, col, r, c) {
     if (!in_board(board, r, c)) {
       continue;
     }
@@ -225,10 +170,7 @@ void update_set_qi(
   board->qi_cache[row][col] = qi;
   board->qi_pos[row][col] = ((pos_row & 0xFFFF) << 16) | (pos_col & 0xFFFF);
 
-  for (int k = 0; k < 4; k++) {
-    int r = row + dx[k];
-    int c = col + dy[k];
-
+  for_neighbor(board, row, col, r, c) {
     if (!in_board(board, r, c)) {
       continue;
     }
@@ -248,13 +190,13 @@ void update_qi(Board* board) {
 
   assert(board->rows < MAX_N && board->cols < MAX_N);
 
-  static bool is_piece_set_mem[MAX_N * MAX_N];
-  static bool is_piece_visited_mem[MAX_N * MAX_N];
-  static bool is_qi_visited_mem[MAX_N * MAX_N];
-
-  static bool* is_piece_set[MAX_N];
-  static bool* is_piece_visited[MAX_N];
-  static bool* is_qi_visited[MAX_N];
+  bool is_piece_set_mem[MAX_N * MAX_N];
+  bool is_piece_visited_mem[MAX_N * MAX_N];
+  bool is_qi_visited_mem[MAX_N * MAX_N];
+  
+  bool* is_piece_set[MAX_N];
+  bool* is_piece_visited[MAX_N];
+  bool* is_qi_visited[MAX_N];
 
   for (int i = 0; i < board->rows; i++) {
     is_piece_set[i] = is_piece_set_mem + i * board->cols;
@@ -264,25 +206,23 @@ void update_qi(Board* board) {
 
   memset(is_piece_set_mem, 0, board->rows * board->cols * sizeof(bool));
 
-  for (int r = 0; r < board->rows; r++) {
-    for (int c = 0; c < board->cols; c++) {
-      if (is_piece_set[r][c]) {
-        continue;
-      }
-
-      if (get_piece(board, r, c) == EMPTY) {
-        continue;
-      }
-
-      unsigned qi, pos_row, pos_col;
-
-      memset(is_piece_visited_mem, 0, board->rows * board->cols * sizeof(bool));
-      memset(is_qi_visited_mem, 0, board->rows * board->cols * sizeof(bool));
-
-      qi = update_get_qi(&pos_row, &pos_col, board, r, c, is_piece_visited, is_qi_visited);
-
-      update_set_qi(board, r, c, qi, pos_row, pos_col, is_piece_set);
+  for_each_cell(board, r, c) {
+    if (is_piece_set[r][c]) {
+      continue;
     }
+
+    if (get_piece(board, r, c) == EMPTY) {
+      continue;
+    }
+
+    unsigned qi, pos_row, pos_col;
+
+    memset(is_piece_visited_mem, 0, board->rows * board->cols * sizeof(bool));
+    memset(is_qi_visited_mem, 0, board->rows * board->cols * sizeof(bool));
+
+    qi = update_get_qi(&pos_row, &pos_col, board, r, c, is_piece_visited, is_qi_visited);
+
+    update_set_qi(board, r, c, qi, pos_row, pos_col, is_piece_set);
   }
 
   board->is_qi_updated = true;
@@ -294,10 +234,7 @@ bool is_self_capture(Board* board, int row, int col, Piece player) {
   assert(in_board(board, row, col));
   assert(get_piece(board, row, col) == EMPTY);
 
-  for (int k = 0; k < 4; k++) {
-    int r = row + dx[k];
-    int c = col + dy[k];
-
+  for_neighbor(board, row, col, r, c) {
     if (!in_board(board, r, c)) {
       continue;
     }
@@ -343,10 +280,7 @@ void remove_string(Board* board, int row, int col) {
 
   remove_piece(board, row, col);
 
-  for (int k = 0; k < 4; k++) {
-    int r = row + dx[k];
-    int c = col + dy[k];
-
+  for_neighbor(board, row, col, r, c) {
     if (!in_board(board, r, c)) {
       continue;
     }
@@ -363,10 +297,7 @@ void place_piece(Board* board, int row, int col, Piece player) {
   assert(is_valid_move(board, row, col, player));
   add_piece(board, row, col, player);
 
-  for (int k = 0; k < 4; k++) {
-    int r = row + dx[k];
-    int c = col + dy[k];
-
+  for_neighbor(board, row, col, r, c) {
     if (!in_board(board, r, c)) {
       continue;
     }
@@ -385,4 +316,31 @@ void place_piece(Board* board, int row, int col, Piece player) {
 
 uint64_t hash(Board* board) {
   return board->zobrist_hash;
+}
+
+typedef struct {
+  int rows;
+  int cols;
+  bool is_qi_updated;
+  uint64_t zobrist_hash;
+  char mem_start[];
+} SerializeBuffer;
+
+size_t serialize(Board* board, void *buf) {
+  SerializeBuffer* buffer = (SerializeBuffer*) buf;
+  buffer->rows = board->rows;
+  buffer->cols = board->cols;
+  buffer->is_qi_updated = board->is_qi_updated;
+  buffer->zobrist_hash = board->zobrist_hash;
+  memcpy(buffer->mem_start, board->mem, board->mem_size);
+  return sizeof(SerializeBuffer) + board->mem_size;
+}
+
+Board* deserialize(void* buf) {
+  SerializeBuffer* buffer = (SerializeBuffer*) buf;
+  Board* board = new_board(buffer->rows, buffer->cols);
+  board->is_qi_updated = buffer->is_qi_updated;
+  board->zobrist_hash = buffer->zobrist_hash;
+  memcpy(board->mem, buffer->mem_start, board->mem_size);
+  return board;
 }

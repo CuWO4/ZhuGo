@@ -137,7 +137,7 @@ def analyze_ladder(board: Board, threshold: int = 4) -> LadderAnalysis:
     
     stones = set([point])
     
-    for neighbor in (Point(row = point.row + dx, col = point.col + dy) for dx in (-1, 1) for dy in (-1, 1)):
+    for neighbor in point.neighbors():
       if not board.in_board(neighbor):
         continue
 
@@ -184,4 +184,4 @@ def ladder_analysis_to_mcts_data(ladder_analysis: LadderAnalysis, size: tuple[in
       q[move_to_idx(Move.play(point), size)] = 0
       visited_times[move_to_idx(Move.play(point), size)] = 100
 
-  return MCTSData(q, visited_times, None, size)
+  return MCTSData(q, visited_times, None, None, size)
