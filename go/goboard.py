@@ -180,9 +180,10 @@ class Move():
 
 class GameState():
   def __init__(self, board: Board, next_player: Player, previous_state, last_move: Move, komi: float,
-               *, is_privileged_mode: bool = False):
+               *, is_privileged_mode: bool = False, turn: int = 1):
     '''only privileged mode is on, undo move is allowed
     '''
+    self.turn = turn
     self.board: Board = board
     self.next_player: Player = next_player
     self.previous_state: GameState = previous_state
@@ -212,12 +213,13 @@ class GameState():
       self, 
       move, 
       self.komi, 
-      is_privileged_mode = self.is_privileged_mode
+      is_privileged_mode = self.is_privileged_mode,
+      turn = self.turn + 1
     )
 
   @staticmethod
   def new_game(board_size: tuple[int] = (19, 19), komi: float = 7.5, *, is_privileged_mode: bool = False):
-    return GameState(Board(*board_size), Player.black, None, None, komi, is_privileged_mode = is_privileged_mode)
+    return GameState(Board(*board_size), Player.black, None, None, komi, is_privileged_mode = is_privileged_mode, turn = 1)
 
   def does_move_violate_ko(self, player: Player, move: Move) -> bool:
     if not move.is_play:
