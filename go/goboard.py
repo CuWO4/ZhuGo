@@ -191,13 +191,6 @@ class GameState():
 
     self.is_privileged_mode: bool = is_privileged_mode
     
-  # ignore previous states which is only useful for undo move
-  def __getstate__(self) -> dict:
-    state = self.__dict__.copy()
-    if state['previous_state'] is not None:
-      state['previous_state'].previous_state = None
-    return state
-    
   def apply_move(self, move: Move):
     """Return the new GameState after applying the move."""
     assert not self.is_over()
@@ -249,7 +242,7 @@ class GameState():
       and not self.does_move_violate_ko(self.next_player, move)
 
   def is_over(self) -> bool:
-    if self.last_move is None:
+    if self.last_move is None or self.previous_state is None:
       return False
     if self.last_move.is_resign:
       return True 
