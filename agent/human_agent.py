@@ -12,4 +12,7 @@ class HumanAgent(Agent):
   def select_move(self, game_state: GameState) -> Move:
     assert self.ui is not None
     
-    return self.ui.get_move(block=True)
+    while True:
+      move = self.ui.get_move(block=True)
+      if game_state.is_valid_move(move):
+        return move

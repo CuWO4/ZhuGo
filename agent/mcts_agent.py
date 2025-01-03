@@ -64,10 +64,13 @@ class MCTSAgent(Agent):
       self.update_monitor(game_state, turn_start_timestamp)
 
       assert self.ui is not None
-      human_move = self.ui.get_move(block=False)
-      if human_move is not None:
-        self.ui.display_mcts(MCTSData.empty(board.size))
-        return human_move
+      while True:
+        human_move = self.ui.get_move(block=False)
+        if human_move is None:
+          break
+        if game_state.is_valid_move(human_move):
+          self.ui.display_mcts(MCTSData.empty(board.size))
+          return human_move
 
   def update_monitor(self, game_state: GameState, turn_start_timestamp: int):
     entropy = cal_entropy(self.root.visited_times)
