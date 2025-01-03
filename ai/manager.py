@@ -1,3 +1,6 @@
+from train.meta import MetaData
+from conf.utils import GeneralObjectEncoder, general_object_hook
+
 import os
 import json
 import torch
@@ -34,29 +37,28 @@ def create(ModelType: type, model_params: dict, path: str, dumb_input: torch.Ten
   writer.add_graph(model, dumb_input)
   writer.close()
   
-  meta = { "epoch": 0 }
+  meta = MetaData()
   meta_json = os.path.join(path, META_DATA_FILE)
   with open(meta_json, "w") as f:
-    json.dump(meta, f)
+    json.dump(meta, f, cls=GeneralObjectEncoder)
     
   print('model successfully created')
 
-def save(model: torch.nn.Module, meta: dict, path: str):
+def save(model: torch.nn.Module, meta: MetaData, path: str):
   model_file = os.path.join(path, MODEL_FILE)
   torch.save(model.state_dict(), model_file)
   
   meta_json = os.path.join(path, META_DATA_FILE)
   with open(meta_json, "w") as f:
-    json.dump(meta, f)
+    json.dump(meta, f, cls=GeneralObjectEncoder)
     
   print('model successfully saved')
 
 def load(
   ModelType: type, path: str, 
   device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
-) -> tuple[torch.nn.Module, dict, SummaryWriter]:
+) -> tuple[torch.nn.Module, MetaData, SummaryWriter]:
   model_json = os.path.join(path, MODEL_SETTING_FILE)
-  print(model_json)
   with open(model_json, "r") as f:
     model_params = json.load(f)
   
@@ -67,7 +69,7 @@ def load(
   
   meta_json = os.path.join(path, META_DATA_FILE)
   with open(meta_json, "r") as f:
-    meta = json.load(f)
+    meta = json.load(f, object_hook=general_object_hook)
   
   tb_dir = os.path.join(path, TENSORBOARD_DIR)
   writer = SummaryWriter(tb_dir)

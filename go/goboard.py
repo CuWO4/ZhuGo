@@ -23,23 +23,6 @@ class Board():
     else:
       self.c_board = c_board
       
-  def to_board_data(self):
-    return [
-      [self.c_board.get(row, col) for col in range(self.num_cols)]
-      for row in range(self.num_rows)
-    ]
-    
-  @staticmethod
-  def from_board_data(borad_data):
-    rows = len(borad_data)
-    cols = len(borad_data[0])
-
-    c_board = cBoard(rows, cols)
-    for r, row in enumerate(borad_data):
-      for c, player in enumerate(row):
-        c_board.place_stone(player, r, c)
-    return Board(rows, cols, c_board)
-  
   @staticmethod
   def c_player_to_py_player(c_player: int) -> Player:
     if c_player == 0:
@@ -208,29 +191,13 @@ class GameState():
 
     self.is_privileged_mode: bool = is_privileged_mode
     
-  def to_game_state_data(self):
-    return (
-      self.board.to_board_data(), 
-      self.next_player, 
-      self.komi,
-      self.last_move,
-      self.previous_state.board.to_board_data() if self.previous_state is not None else None,
-      self.previous_state.last_move if self.previous_state is not None else None
-    )
-  
-  @staticmethod
-  def from_game_state_data(game_state_data):
-    board_data, next_player, komi, last_move, last_board_data, second_last_move = game_state_data
-    game_state = GameState(
-      Board.from_board_data(board_data), 
-      next_player, 
-      GameState(Board.from_board_data(last_board_data), next_player.other, None, second_last_move, komi) 
-        if last_board_data is not None else None, 
-      last_move,
-      komi
-    )
-    return game_state
-
+  # ignore previous states which is only useful for undo move
+  def __getstate__(self) -> dict:
+    state = self.__dict__.copy()
+    if state['previous_state'] is not None:
+      state['previous_state'].previous_state = None
+    return state
+    
   def apply_move(self, move: Move):
     """Return the new GameState after applying the move."""
     assert not self.is_over()
