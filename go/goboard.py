@@ -180,9 +180,10 @@ class Move():
 
 class GameState():
   def __init__(self, board: Board, next_player: Player, previous_state, last_move: Move, komi: float,
-               *, is_privileged_mode: bool = False):
+               *, is_privileged_mode: bool = False, turn: int = 1):
     '''only privileged mode is on, undo move is allowed
     '''
+    self.turn = turn
     self.board: Board = board
     self.next_player: Player = next_player
     self.previous_state: GameState = previous_state
@@ -190,13 +191,6 @@ class GameState():
     self.last_move: Move = last_move
 
     self.is_privileged_mode: bool = is_privileged_mode
-    
-  # ignore previous states which is only useful for undo move
-  def __getstate__(self) -> dict:
-    state = self.__dict__.copy()
-    if state['previous_state'] is not None:
-      state['previous_state'].previous_state = None
-    return state
     
   def apply_move(self, move: Move):
     """Return the new GameState after applying the move."""
@@ -219,12 +213,13 @@ class GameState():
       self, 
       move, 
       self.komi, 
-      is_privileged_mode = self.is_privileged_mode
+      is_privileged_mode = self.is_privileged_mode,
+      turn = self.turn + 1
     )
 
   @staticmethod
   def new_game(board_size: tuple[int] = (19, 19), komi: float = 7.5, *, is_privileged_mode: bool = False):
-    return GameState(Board(*board_size), Player.black, None, None, komi, is_privileged_mode = is_privileged_mode)
+    return GameState(Board(*board_size), Player.black, None, None, komi, is_privileged_mode = is_privileged_mode, turn = 1)
 
   def does_move_violate_ko(self, player: Player, move: Move) -> bool:
     if not move.is_play:
@@ -249,7 +244,7 @@ class GameState():
       and not self.does_move_violate_ko(self.next_player, move)
 
   def is_over(self) -> bool:
-    if self.last_move is None:
+    if self.last_move is None or self.previous_state is None:
       return False
     if self.last_move.is_resign:
       return True 
