@@ -11,8 +11,8 @@ __all__ = [
 ]
 
 class RandomAgent(Agent):
-  def __init__(self, *, need_move_queue: bool = True, need_mcts_queue: bool = False):
-    super().__init__(need_move_queue=need_move_queue, need_mcts_queue=need_mcts_queue)
+  def __init__(self):
+    super().__init__()
   
   def select_move(self, game_state: goboard.GameState) -> goboard.Move:
 
