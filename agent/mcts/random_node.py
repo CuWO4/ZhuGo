@@ -69,16 +69,7 @@ class RandomNode(Node):
       else:
         move_idx = move_to_idx(Move.pass_turn(), self.game_state.board.size)
 
-      move = idx_to_move(move_idx, self.game_state.board.size)
-      if self.branches[move_idx] is None:
-        self.branches[move_idx] = RandomNode(
-          game_state=self.game_state.apply_move(move),
-          pool=self.pool,
-          c=self.c,
-          depth=self.depth - 1,
-        )
-
-      game_results = self.branches[move_idx].propagate()
+      game_results = self.branch(idx_to_move(move_idx, self.game_state.board.size)).propagate()
 
       for game_result in game_results:
         self.analyze_game_result(move_idx, game_result)
@@ -102,7 +93,7 @@ class RandomNode(Node):
     self.total_visited_times += 1
     self.total_margin_sum += winning_margin
     
-  def branch(self: T, move: Move) -> T:
+  def branch(self: T, move: Move) -> T: 
     move_idx = move_to_idx(move, self.game_state.board.size)
     move = idx_to_move(move_idx, self.game_state.board.size)
     if self.branches[move_idx] is None:
@@ -110,12 +101,15 @@ class RandomNode(Node):
         game_state=self.game_state.apply_move(move),
         pool=self.pool,
         c=self.c,
-        depth=self.depth,
+        depth=self.depth - 1,
       )
 
-    self.branches[move_idx].depth = self.depth
-
     return self.branches[move_idx]
+
+  def switch_branch(self: T, move: Move) -> T:
+    branch = self.branch(move)
+    branch.depth = self.depth
+    return branch
 
   @property
   def q(self) -> np.ndarray[float]:

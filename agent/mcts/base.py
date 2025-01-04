@@ -98,6 +98,13 @@ class Node:
   def branch(self: T, move: Move) -> T:
     '''return the Node representing state applied with certain move'''
     raise NotImplementedError()
+  
+  def switch_branch(self: T, move: Move) -> T:
+    '''
+    return branch for switching operation, some internal states may change
+    after the new node become a root node
+    '''
+    raise NotImplementedError()
 
 
   @property
