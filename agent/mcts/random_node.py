@@ -166,14 +166,13 @@ class RandomNode(Node):
   ) -> list[tuple[int, GameResult]]:
     results = pool.starmap(
       RandomNode.simulate_worker,
-      [(i, game_state.to_game_state_data(), indexes[i], AgentType) for i in range(pool._processes)]
+      [(i, game_state, indexes[i], AgentType) for i in range(pool._processes)]
     )
     return results
 
   @staticmethod
-  def simulate_worker(thread_id: int, game_state_data, move_idx: int, AgentType: type) \
+  def simulate_worker(thread_id: int, game, move_idx: int, AgentType: type) \
     -> tuple[int, GameResult]:
-    game = GameState.from_game_state_data(game_state_data)
     usec = datetime.datetime.now().microsecond
     seed = thread_id + int(usec) & 0xFFFF_FFFF
     np.random.seed(seed)

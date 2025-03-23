@@ -317,3 +317,30 @@ void place_piece(Board* board, int row, int col, Piece player) {
 uint64_t hash(Board* board) {
   return board->zobrist_hash;
 }
+
+typedef struct {
+  int rows;
+  int cols;
+  bool is_qi_updated;
+  uint64_t zobrist_hash;
+  char mem_start[];
+} SerializeBuffer;
+
+size_t serialize(Board* board, void *buf) {
+  SerializeBuffer* buffer = (SerializeBuffer*) buf;
+  buffer->rows = board->rows;
+  buffer->cols = board->cols;
+  buffer->is_qi_updated = board->is_qi_updated;
+  buffer->zobrist_hash = board->zobrist_hash;
+  memcpy(buffer->mem_start, board->mem, board->mem_size);
+  return sizeof(SerializeBuffer) + board->mem_size;
+}
+
+Board* deserialize(void* buf) {
+  SerializeBuffer* buffer = (SerializeBuffer*) buf;
+  Board* board = new_board(buffer->rows, buffer->cols);
+  board->is_qi_updated = buffer->is_qi_updated;
+  board->zobrist_hash = buffer->zobrist_hash;
+  memcpy(board->mem, buffer->mem_start, board->mem_size);
+  return board;
+}
