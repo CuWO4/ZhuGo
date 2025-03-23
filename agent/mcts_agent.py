@@ -47,7 +47,7 @@ class MCTSAgent(Agent):
       self.root = self.NodeType(game_state=game_state, pool=self.pool, **self.node_settings)
     else:
       for move in game_state - self.root.game_state:
-        self.root = self.root.branch(move)
+        self.root = self.root.switch_branch(move)
 
     while True:
       self.root.propagate()
