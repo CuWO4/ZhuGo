@@ -96,26 +96,14 @@ class ZhuGoResidualConvBlock(nn.Module):
     out = self.decoder_conv1x1(out)
     return out
 
-class MultiScaleConvBlock(nn.Module):
+class IntermediateConvBlock(nn.Module):
   def __init__(self, input_channels, output_channels, bias=True):
-    super(MultiScaleConvBlock, self).__init__()
-    channels7x7 = output_channels // 8
-    channels5x5 = output_channels // 4
-    channels3x3 = output_channels - channels7x7 - channels5x5
-
-    self.conv3x3 = nn.Conv2d(input_channels, channels3x3, kernel_size=3, padding=1, bias=bias)
-    self.conv5x5 = nn.Conv2d(input_channels, channels5x5, kernel_size=5, padding=2, bias=bias)
-    self.conv7x7 = nn.Conv2d(input_channels, channels7x7, kernel_size=7, padding=3, bias=bias)
-
+    super(IntermediateConvBlock, self).__init__()
+    self.conv3x3 = nn.Conv2d(input_channels, output_channels, kernel_size=3, padding=1, bias=bias)
     nn.init.kaiming_normal_(self.conv3x3.weight)
-    nn.init.kaiming_normal_(self.conv5x5.weight)
-    nn.init.kaiming_normal_(self.conv7x7.weight)
 
   def forward(self, x):
-    y3x3 = self.conv3x3(x)
-    y5x5 = self.conv5x5(x)
-    y7x7 = self.conv7x7(x)
-    return torch.cat([y3x3, y5x5, y7x7], dim=1)
+    return self.conv3x3(x)
 
 class ZhuGo(nn.Module):
   def __init__(
@@ -126,7 +114,7 @@ class ZhuGo(nn.Module):
     residual_channels: tuple[int], 
     residual_depths: tuple[int], 
     bottleneck_channels: int,
-    policy_middle_channel: int,
+    policy_residual_depth: int,
     value_middle_width: int
   ):
     super(ZhuGo, self).__init__()
@@ -137,7 +125,9 @@ class ZhuGo(nn.Module):
     length = len(residual_channels)
     residual_layers = []
     for idx, (channel, depth) in enumerate(zip(residual_channels, residual_depths)):
-      residual_layers += [ZhuGoResidualConvBlock(channel) for _ in range(depth)] + [
+      residual_layers += [
+        ZhuGoResidualConvBlock(channel) for _ in range(depth)
+      ] + [
         nn.BatchNorm2d(channel),
         nn.LeakyReLU(),
       ]
@@ -145,7 +135,7 @@ class ZhuGo(nn.Module):
         next_channel = residual_channels[idx + 1]
         residual_layers += [
           nn.Dropout2d(0.1),
-          MultiScaleConvBlock(channel, next_channel, bias=False),
+          IntermediateConvBlock(channel, next_channel, bias=False),
         ]
 
     first_channel = residual_channels[0]
@@ -160,33 +150,29 @@ class ZhuGo(nn.Module):
 
       # Bottleneck convolution
       nn.Conv2d(last_channel, bottleneck_channels, kernel_size=1, bias=False),
-      nn.BatchNorm2d(bottleneck_channels),
-      nn.LeakyReLU(),
     )
     
     nn.init.kaiming_normal_(self.shared[0].weight)
-    nn.init.kaiming_normal_(self.shared[-3].weight)
+    nn.init.kaiming_normal_(self.shared[-1].weight)
 
     # policy head
 
     self.policy = nn.Sequential(
-      nn.Conv2d(bottleneck_channels, policy_middle_channel, kernel_size=5, padding=2, bias=False),
-      nn.BatchNorm2d(policy_middle_channel),
+      *[
+        ZhuGoResidualConvBlock(bottleneck_channels)
+        for _ in range(policy_residual_depth)
+      ],
+      nn.BatchNorm2d(bottleneck_channels),
       nn.LeakyReLU(),
-      nn.Conv2d(policy_middle_channel, policy_middle_channel, kernel_size=3, padding=1, bias=False),
-      nn.BatchNorm2d(policy_middle_channel),
-      nn.LeakyReLU(),
-      nn.Conv2d(policy_middle_channel, 1, kernel_size=1)
+      nn.Conv2d(bottleneck_channels, 1, kernel_size=1)
     )
     
-    nn.init.kaiming_normal_(self.policy[0].weight)
-    nn.init.kaiming_normal_(self.policy[3].weight)
     nn.init.xavier_normal_(self.policy[-1].weight)
 
     # value head
 
     self.value = nn.Sequential(
-      nn.Conv2d(bottleneck_channels, bottleneck_channels, kernel_size=3, padding=1, bias=False),
+      ZhuGoResidualConvBlock(bottleneck_channels),
       nn.BatchNorm2d(bottleneck_channels),
       nn.LeakyReLU(),
       nn.Conv2d(bottleneck_channels, 1, kernel_size=1, bias=False),
@@ -197,13 +183,11 @@ class ZhuGo(nn.Module):
       nn.LeakyReLU(),
       nn.Dropout(0.5),
       nn.Linear(value_middle_width, 1),
-      nn.Sigmoid(),
     )
     
-    nn.init.kaiming_normal_(self.value[0].weight)
     nn.init.kaiming_normal_(self.value[3].weight)
-    nn.init.kaiming_normal_(self.value[-5].weight)
-    nn.init.xavier_normal_(self.value[-2].weight)
+    nn.init.kaiming_normal_(self.value[-4].weight)
+    nn.init.xavier_normal_(self.value[-1].weight)
 
   def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     shared = self.shared(x)
