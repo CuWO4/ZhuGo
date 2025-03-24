@@ -3,8 +3,6 @@ from tkinter import ttk
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from multiprocessing import connection
-import time
-import threading
 from matplotlib.ticker import MaxNLocator
 
 class Monitor:

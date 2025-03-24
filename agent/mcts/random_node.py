@@ -1,6 +1,5 @@
 from .base import Node
 
-from ..base import Agent
 from .utils import exploring_move_indexes
 from ..random_agent import RandomAgent
 
@@ -95,7 +94,6 @@ class RandomNode(Node):
     
   def branch(self: T, move: Move) -> T: 
     move_idx = move_to_idx(move, self.game_state.board.size)
-    move = idx_to_move(move_idx, self.game_state.board.size)
     if self.branches[move_idx] is None:
       self.branches[move_idx] = RandomNode(
         game_state=self.game_state.apply_move(move),
