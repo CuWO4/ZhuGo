@@ -37,9 +37,6 @@ class AINode(Node):
   ):
     super().__init__(game_state=game_state, pool=pool, c=c)
 
-    self.legal_mask[self.legal_mask != 0] = 1
-    self.legal_mask = 1 - self.legal_mask
-
     self.model = model
     self.encoder = encoder
     self.noise_intensity = noise_intensity

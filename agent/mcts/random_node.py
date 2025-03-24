@@ -37,8 +37,8 @@ class RandomNode(Node):
     self.__is_q_dirty: bool = True
     self.__is_ucb_dirty: bool = True
 
-    self.__q_cache: np.ndarray = np.zeros(self.policy_size, dtype=np.float64)
-    self.__ucb_cache: np.ndarray = np.zeros(self.policy_size, dtype=np.float64)
+    self.__q_cache: np.ndarray = np.zeros(self.policy_size, dtype=np.float32)
+    self.__ucb_cache: np.ndarray = np.zeros(self.policy_size, dtype=np.float32)
 
   def propagate(self) -> list[GameResult]:
     if self.game_state.is_over():
@@ -146,7 +146,7 @@ class RandomNode(Node):
 
     self.__ucb_cache = self.q + self.c * np.sqrt(
       np.log(1 + np.sum(self._visited_times)) / (1 + self._visited_times))
-    self.__ucb_cache += self.legal_mask
+    self.__ucb_cache += 1e5 * (self.legal_mask - 1)
     return self.__ucb_cache
 
   @staticmethod
