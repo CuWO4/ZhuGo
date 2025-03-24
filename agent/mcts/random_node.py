@@ -1,6 +1,5 @@
 from .base import Node
 
-from ..base import Agent
 from .utils import exploring_move_indexes
 from ..random_agent import RandomAgent
 
@@ -38,8 +37,8 @@ class RandomNode(Node):
     self.__is_q_dirty: bool = True
     self.__is_ucb_dirty: bool = True
 
-    self.__q_cache: np.ndarray = np.zeros(self.policy_size, dtype=np.float64)
-    self.__ucb_cache: np.ndarray = np.zeros(self.policy_size, dtype=np.float64)
+    self.__q_cache: np.ndarray = np.zeros(self.policy_size, dtype=np.float32)
+    self.__ucb_cache: np.ndarray = np.zeros(self.policy_size, dtype=np.float32)
 
   def propagate(self) -> list[GameResult]:
     if self.game_state.is_over():
@@ -69,16 +68,7 @@ class RandomNode(Node):
       else:
         move_idx = move_to_idx(Move.pass_turn(), self.game_state.board.size)
 
-      move = idx_to_move(move_idx, self.game_state.board.size)
-      if self.branches[move_idx] is None:
-        self.branches[move_idx] = RandomNode(
-          game_state=self.game_state.apply_move(move),
-          pool=self.pool,
-          c=self.c,
-          depth=self.depth - 1,
-        )
-
-      game_results = self.branches[move_idx].propagate()
+      game_results = self.branch(idx_to_move(move_idx, self.game_state.board.size)).propagate()
 
       for game_result in game_results:
         self.analyze_game_result(move_idx, game_result)
@@ -102,20 +92,22 @@ class RandomNode(Node):
     self.total_visited_times += 1
     self.total_margin_sum += winning_margin
     
-  def branch(self: T, move: Move) -> T:
+  def branch(self: T, move: Move) -> T: 
     move_idx = move_to_idx(move, self.game_state.board.size)
-    move = idx_to_move(move_idx, self.game_state.board.size)
     if self.branches[move_idx] is None:
       self.branches[move_idx] = RandomNode(
         game_state=self.game_state.apply_move(move),
         pool=self.pool,
         c=self.c,
-        depth=self.depth,
+        depth=self.depth - 1,
       )
 
-    self.branches[move_idx].depth = self.depth
-
     return self.branches[move_idx]
+
+  def switch_branch(self: T, move: Move) -> T:
+    branch = self.branch(move)
+    branch.depth = self.depth
+    return branch
 
   @property
   def q(self) -> np.ndarray[float]:
@@ -154,7 +146,7 @@ class RandomNode(Node):
 
     self.__ucb_cache = self.q + self.c * np.sqrt(
       np.log(1 + np.sum(self._visited_times)) / (1 + self._visited_times))
-    self.__ucb_cache += self.legal_mask
+    self.__ucb_cache += 1e5 * (self.legal_mask - 1)
     return self.__ucb_cache
 
   @staticmethod
