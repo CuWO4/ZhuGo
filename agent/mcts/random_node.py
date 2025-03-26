@@ -1,6 +1,5 @@
 from .base import Node
 
-from ..base import Agent
 from .utils import exploring_move_indexes
 from ..random_agent import RandomAgent
 
@@ -25,16 +24,21 @@ class RandomNode(Node):
     super().__init__(game_state=game_state, pool=pool, c=c)
 
     self.depth = depth
+    
+    self.win_count: int = 0
 
-    self.move_winning_margins = [[] for _ in range(self.policy_size)]
+    self._visited_times: np.ndarray = np.zeros(self.policy_size)
+    self.margin_sums: np.ndarray = np.zeros(self.policy_size)
+    
+    self.total_visited_times: int = 0
+    self.total_margin_sum: float = 0
+    self.total_margin_biases: float = 0
 
     self.__is_q_dirty: bool = True
-    self.__is_visited_times_dirty: bool = True
     self.__is_ucb_dirty: bool = True
 
-    self.__q_cache: np.ndarray = np.array([0 for _ in range(self.policy_size)], dtype=np.float64)
-    self.__visited_times_cache: np.ndarray = np.array([0 for _ in range(self.policy_size)], dtype=np.float64)
-    self.__ucb_cache: np.ndarray = np.array([0 for _ in range(self.policy_size)], dtype=np.float64)
+    self.__q_cache: np.ndarray = np.zeros(self.policy_size, dtype=np.float32)
+    self.__ucb_cache: np.ndarray = np.zeros(self.policy_size, dtype=np.float32)
 
   def propagate(self) -> list[GameResult]:
     if self.game_state.is_over():
@@ -64,16 +68,7 @@ class RandomNode(Node):
       else:
         move_idx = move_to_idx(Move.pass_turn(), self.game_state.board.size)
 
-      move = idx_to_move(move_idx, self.game_state.board.size)
-      if self.branches[move_idx] is None:
-        self.branches[move_idx] = RandomNode(
-          game_state=self.game_state.apply_move(move),
-          pool=self.pool,
-          c=self.c,
-          depth=self.depth - 1,
-        )
-
-      game_results = self.branches[move_idx].propagate()
+      game_results = self.branch(idx_to_move(move_idx, self.game_state.board.size)).propagate()
 
       for game_result in game_results:
         self.analyze_game_result(move_idx, game_result)
@@ -81,95 +76,68 @@ class RandomNode(Node):
       return game_results
 
   def analyze_game_result(self, move_idx: int, game_result: GameResult):
+    if game_result.winner == self.game_state.next_player:
+      self.win_count += 1
+    
     self.__is_q_dirty = True
     self.__is_ucb_dirty = True
-    self.__is_visited_times_dirty = True
-    self.move_winning_margins[move_idx].append(
-      (1 if game_result.winner == self.game_state.next_player else -1) * game_result.winning_margin
-    )
+    
+    winning_margin = (1 if game_result.winner == self.game_state.next_player else -1) \
+      * game_result.winning_margin
 
-  def branch(self: T, move: Move) -> T:
+    self._visited_times[move_idx] += 1
+    self.margin_sums[move_idx] += winning_margin
+    
+    self.total_margin_biases += (winning_margin - self.total_margin_sum / (self.total_visited_times + 1e-8)) ** 2
+    self.total_visited_times += 1
+    self.total_margin_sum += winning_margin
+    
+  def branch(self: T, move: Move) -> T: 
     move_idx = move_to_idx(move, self.game_state.board.size)
-    move = idx_to_move(move_idx, self.game_state.board.size)
     if self.branches[move_idx] is None:
       self.branches[move_idx] = RandomNode(
         game_state=self.game_state.apply_move(move),
         pool=self.pool,
         c=self.c,
-        depth=self.depth,
+        depth=self.depth - 1,
       )
-
-    self.branches[move_idx].depth = self.depth
 
     return self.branches[move_idx]
 
+  def switch_branch(self: T, move: Move) -> T:
+    branch = self.branch(move)
+    branch.depth = self.depth
+    return branch
 
   @property
   def q(self) -> np.ndarray[float]:
     if not self.__is_q_dirty:
       return self.__q_cache
 
-    def activate(arr: np.ndarray, scale: float = 2):
-      arr = arr.clip(-scale + 1e-5, scale - 1e-5)
-      arr = np.arcsin(arr / scale) / math.pi + 0.5
-      return arr
-
-    def sigmoid(arr: np.ndarray):
-      return 1 / (1 + np.exp(-arr))
-
-    all_margin = np.array(sum(self.move_winning_margins, start = []))
-
-    if len(all_margin) < 2:
+    if self.total_visited_times < 2 or self.total_margin_biases == 0:
       self.__q_cache.fill(0.5)
       self.__is_q_dirty = False
       return self.__q_cache
 
-    average = np.mean(all_margin)
-    deviation = np.std(all_margin)
+    mean = self.total_margin_sum / (self.total_visited_times + 1e-8)
+    std = math.sqrt(self.total_margin_biases / (self.total_visited_times + 1e-8))
+
+    self.__q_cache = (self.margin_sums / (self._visited_times + 1e-8) - mean) / std
+    self.__q_cache = (self.__q_cache + 1) / 2
     
-    if deviation == 0:
-      self.__q_cache.fill(0.5)
-      self.__is_q_dirty = False
-      return self.__q_cache
-
-    for idx, subarr in enumerate(self.move_winning_margins):
-      if not subarr:
-        self.__q_cache[idx] = 0.5
-        continue
-
-      subarr_np = np.array(subarr)
-      subarr_np = (subarr_np - average) / deviation
-      subarr_np = activate(subarr_np)
-      self.__q_cache[idx] = np.mean(subarr_np)
-    self.__q_cache = sigmoid(15 * (self.__q_cache - 0.5))
-
     self.__is_q_dirty = False
     return self.__q_cache
-
-  @property
-  def visited_times(self) -> np.ndarray[int]:
-    if not self.__is_visited_times_dirty:
-      return self.__visited_times_cache
-
-    for idx, subarr in enumerate(self.move_winning_margins):
-      self.__visited_times_cache[idx] = len(subarr)
-    self.__is_visited_times_dirty = False
-    return self.__visited_times_cache
   
   @property
+  def visited_times(self) -> np.ndarray[float]:
+    return self._visited_times
+
+  @property
   def win_rate(self) -> float:
-    visited_times_sum = np.sum(self.visited_times)
-    if visited_times_sum == 0:
+    if self.total_visited_times == 0:
       return 0.5
     else:
-      non_batch_normalized_q = [
-        sum([1 if margin > 0 else 0 for margin in margins]) / visited_time 
-          if visited_time != 0 else 0.5
-        for visited_time, margins in zip(self.visited_times, self.move_winning_margins)
-      ]
-      return np.sum(
-        non_batch_normalized_q * self.visited_times
-      ) / visited_times_sum
+      return self.win_count / self.total_visited_times
 
   @property
   def ucb(self) -> np.ndarray[float]:
@@ -177,8 +145,8 @@ class RandomNode(Node):
       return self.__ucb_cache
 
     self.__ucb_cache = self.q + self.c * np.sqrt(
-      np.log(1 + np.sum(self.visited_times)) / (1 + self.visited_times))
-    self.__ucb_cache += self.legal_mask
+      np.log(1 + np.sum(self._visited_times)) / (1 + self._visited_times))
+    self.__ucb_cache += 1e5 * (self.legal_mask - 1)
     return self.__ucb_cache
 
   @staticmethod
@@ -190,14 +158,13 @@ class RandomNode(Node):
   ) -> list[tuple[int, GameResult]]:
     results = pool.starmap(
       RandomNode.simulate_worker,
-      [(i, game_state.to_game_state_data(), indexes[i], AgentType) for i in range(pool._processes)]
+      [(i, game_state, indexes[i], AgentType) for i in range(pool._processes)]
     )
     return results
 
   @staticmethod
-  def simulate_worker(thread_id: int, game_state_data, move_idx: int, AgentType: type) \
+  def simulate_worker(thread_id: int, game, move_idx: int, AgentType: type) \
     -> tuple[int, GameResult]:
-    game = GameState.from_game_state_data(game_state_data)
     usec = datetime.datetime.now().microsecond
     seed = thread_id + int(usec) & 0xFFFF_FFFF
     np.random.seed(seed)

@@ -60,12 +60,10 @@ class Node:
       certain branch of certain move
 
     legal_mask, legal_play_count
+      legal_mask takes value from {0, 1}, which represents legal/illegal
+      respectively
       legal plays (which do not include pass turn and resign) according 
       to go rule, filling own eye is illegal
-      
-      legal moves are set 0, otherwise a negative number with 
-      a large absolute value. add legal_mask to ucb to avoid illegal
-      moves are searched or applied
     '''
     self.game_state: GameState = game_state
     self.pool = pool
@@ -77,16 +75,15 @@ class Node:
 
     self.branches: list[Node] = [None] * self.policy_size
 
-    self.legal_mask = np.full(self.policy_size, -1e5, dtype=np.float64)
+    self.legal_mask = np.zeros(self.policy_size, dtype=np.float32)
     self.legal_play_count = 0
     for move in game_state.legal_moves():
-      if move.is_pass:
+      if move.is_pass or move.is_resign or is_point_an_eye(
+        self.game_state.board, move.point, game_state.next_player):
         continue
-      if not move.is_resign and \
-        not is_point_an_eye(self.game_state.board, move.point, game_state.next_player):
-        idx = move_to_idx(move, self.game_state.board.size)
-        self.legal_mask[idx] = 0
-        self.legal_play_count += 1
+      idx = move_to_idx(move, self.game_state.board.size)
+      self.legal_mask[idx] = 1
+      self.legal_play_count += 1
 
   def propagate(self) -> object:
     '''the return value type is determined by the Node subclass
@@ -97,6 +94,13 @@ class Node:
   
   def branch(self: T, move: Move) -> T:
     '''return the Node representing state applied with certain move'''
+    raise NotImplementedError()
+  
+  def switch_branch(self: T, move: Move) -> T:
+    '''
+    return branch for switching operation, some internal states may change
+    after the new node become a root node
+    '''
     raise NotImplementedError()
 
 
