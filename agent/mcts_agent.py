@@ -41,10 +41,9 @@ class MCTSAgent(Agent):
   def select_move(self, game_state: GameState) -> Move:
     turn_start_timestamp = time.time()
 
-    board = game_state.board
-
+    # to implement continuous searching
     if self.root is None or not self.root.game_state.is_ancestor_of(game_state, 2):
-      self.root = self.NodeType(game_state=game_state, pool=self.pool, **self.node_settings)
+      self.root = self.construct_root(game_state)
     else:
       for move in game_state - self.root.game_state:
         self.root = self.root.switch_branch(move)
@@ -53,24 +52,12 @@ class MCTSAgent(Agent):
       self.root.propagate()
       
       if self.ui is not None:
-        self.ui.display_mcts(MCTSData(
-          self.root.q,
-          self.root.visited_times,
-          best_move_idx(self.root.visited_times, self.root.q),
-          self.root.win_rate,
-          board.size
-        ))
+        self.update_ui_mcts()
 
       self.update_monitor(game_state, turn_start_timestamp)
 
-      assert self.ui is not None
-      while True:
-        human_move = self.ui.get_move(block=False)
-        if human_move is None:
-          break
-        if game_state.is_valid_move(human_move):
-          self.ui.display_mcts(MCTSData.empty(board.size))
-          return human_move
+      if (chosen_move := self.chosen_move()) is not None:
+        return chosen_move
 
   def update_monitor(self, game_state: GameState, turn_start_timestamp: int):
     entropy = cal_entropy(self.root.visited_times)
@@ -84,3 +71,25 @@ class MCTSAgent(Agent):
       visited_times_sum,
       time_cost_sec,
     ))
+    
+  def update_ui_mcts(self):
+    assert self.ui is not None
+    self.ui.display_mcts(MCTSData(
+      self.root.q,
+      self.root.visited_times,
+      best_move_idx(self.root.visited_times, self.root.q),
+      self.root.win_rate,
+      self.root.game_state.board.size
+    ))
+
+  def construct_root(self, game_state: GameState) -> Node:
+    return self.NodeType(game_state=game_state, pool=self.pool, **self.node_settings)
+
+  def chosen_move(self) -> Move | None:
+    assert self.ui is not None
+    while (human_move := self.ui.get_move(block=False)) is not None:
+      if self.root.game_state.is_valid_move(human_move):
+        self.ui.display_mcts(MCTSData.empty(self.root.game_state.board.size))
+        while self.ui.get_move(block=False) is not None: pass
+        return human_move
+    return None
