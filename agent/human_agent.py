@@ -1,22 +1,18 @@
 from agent.base import Agent
 from go.goboard import GameState, Move
 
-import time
-
 __all__ = [
   'HumanAgent'
 ]
 
 class HumanAgent(Agent):
-  def __init__(self, *, need_move_queue: bool = True, need_mcts_queue: bool = False):
-    super().__init__(need_move_queue=need_move_queue, need_mcts_queue=need_mcts_queue)
+  def __init__(self):
+    super().__init__()
     
   def select_move(self, game_state: GameState) -> Move:
-    assert self.move_queue is not None
+    assert self.ui is not None
     
-    turn_start_timestamp = time.time()
     while True:
-      move = self.dequeue_move(turn_start_timestamp, game_state)
-      if move is not None:
+      move = self.ui.get_move(block=True)
+      if game_state.is_valid_move(move):
         return move
-      time.sleep(0.05)
