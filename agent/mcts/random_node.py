@@ -1,6 +1,5 @@
 from .base import Node
 
-from ..base import Agent
 from .utils import exploring_move_indexes
 from ..random_agent import RandomAgent
 
@@ -38,8 +37,8 @@ class RandomNode(Node):
     self.__is_q_dirty: bool = True
     self.__is_ucb_dirty: bool = True
 
-    self.__q_cache: np.ndarray = np.zeros(self.policy_size, dtype=np.float64)
-    self.__ucb_cache: np.ndarray = np.zeros(self.policy_size, dtype=np.float64)
+    self.__q_cache: np.ndarray = np.zeros(self.policy_size, dtype=np.float32)
+    self.__ucb_cache: np.ndarray = np.zeros(self.policy_size, dtype=np.float32)
 
   def propagate(self) -> list[GameResult]:
     if self.game_state.is_over():
@@ -95,7 +94,6 @@ class RandomNode(Node):
     
   def branch(self: T, move: Move) -> T: 
     move_idx = move_to_idx(move, self.game_state.board.size)
-    move = idx_to_move(move_idx, self.game_state.board.size)
     if self.branches[move_idx] is None:
       self.branches[move_idx] = RandomNode(
         game_state=self.game_state.apply_move(move),
@@ -148,7 +146,7 @@ class RandomNode(Node):
 
     self.__ucb_cache = self.q + self.c * np.sqrt(
       np.log(1 + np.sum(self._visited_times)) / (1 + self._visited_times))
-    self.__ucb_cache += self.legal_mask
+    self.__ucb_cache += 1e5 * (self.legal_mask - 1)
     return self.__ucb_cache
 
   @staticmethod
