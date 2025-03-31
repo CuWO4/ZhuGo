@@ -79,14 +79,12 @@ class ExpPool:
 
     inputs, policy_targets, value_targets, original_losses, decay_coeffs = self._get_batch(batch_size, device=device)
 
-    self._delete_high_priority_records(batch_size)
-
-    self._priority_decay()
 
     losses = train_f(inputs, policy_targets, value_targets, original_losses)
 
     new_records = Record.from_tensors(inputs, policy_targets, value_targets, losses, decay_coeffs)
-
+    self._delete_high_priority_records(batch_size)
+    self._priority_decay()
     self.insert_record(new_records)
 
   @property
@@ -95,7 +93,7 @@ class ExpPool:
 
   @property
   def loss_mean(self):
-    if len(self.sorted_records) == 0:
+    if self.size == 0:
       raise ValueError('try to get the loss mean of an empty ExpPool')
     initialized_records = self._initialized_records
     if (len(initialized_records) == 0):
@@ -104,7 +102,7 @@ class ExpPool:
 
   @property
   def loss_variance(self):
-    if len(len(self.sorted_records)) == 0:
+    if self.size == 0:
       raise ValueError('try to get the loss variance of an empty ExpPool')
     initialized_records = self._initialized_records
     if len(initialized_records) == 0:
@@ -114,7 +112,7 @@ class ExpPool:
 
   @property
   def loss_median(self):
-    if len(self.sorted_records) == 0:
+    if self.size == 0:
       raise ValueError('try to get the loss median of an empty ExpPool')
     initialized_records = self._initialized_records
     if len(initialized_records) == 0:
