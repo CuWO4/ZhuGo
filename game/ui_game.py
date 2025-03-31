@@ -23,3 +23,5 @@ def start_game(agent1: Agent, agent2: Agent, UIClass: type, game_settings: dict)
     game = game.apply_move(move)
     ui.update(game)
     time.sleep(0.05)
+
+  input(f'game ends. winner: {game.winner()}. press Enter to continue...')

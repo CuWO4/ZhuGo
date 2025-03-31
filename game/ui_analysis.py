@@ -18,3 +18,4 @@ def start_analysis(agent: Agent, UIClass: type, game_settings: dict):
     ui.update(game)
     time.sleep(0.05)
     
+  input(f'game ends. winner: {game.winner()}. press Enter to continue...')
