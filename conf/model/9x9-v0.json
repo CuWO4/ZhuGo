@@ -5,5 +5,6 @@
   "residual_depths": [2], 
   "bottleneck_channels": 32,
   "policy_residual_depth": 1,
-  "value_middle_width": 64
+  "value_residual_depth": 1,
+  "value_middle_width": 32
 }
