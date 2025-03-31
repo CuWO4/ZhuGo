@@ -11,18 +11,21 @@ __all__ = [
 
 
 class Record:
-  __slots__ = ['input_tensor', 'policy_target', 'value_target', 'loss']
+  __slots__ = ['input_tensor', 'policy_target', 'value_target', 'loss', 'priority']
 
   def __init__(self, input_tensor: torch.Tensor, policy_target: torch.Tensor, value_target: torch.Tensor, loss: float):
+    '''input_tensor(1, C, N, M), policy_target(1, N, M), value_target(1, 1)'''
     self.input_tensor = input_tensor.cpu().detach()
     self.policy_target = policy_target.cpu().detach()
     self.value_target = value_target.cpu().detach()
     self.loss = loss
+    self.priority = self.loss
 
 class ExpPool:
-  def __init__(self, capacity: int):
+  def __init__(self, capacity: int, decay_ratio: float = 0.99):
     self.capacity = capacity
-    self.sorted_records = SortedList(key=lambda record: record.loss)
+    self.decay_ratio: float = decay_ratio
+    self.sorted_records: SortedList[Record] = SortedList(key=lambda record: record.priority)
 
   def insert_record(self, records: list[Record]):
     self.sorted_records.update(records)
@@ -31,6 +34,7 @@ class ExpPool:
       del self.sorted_records[:self.size - self.capacity]
 
   def insert_tensor(self, inputs: torch.Tensor, policy_targets: torch.Tensor, value_targets: torch.Tensor, losses: torch.Tensor):
+    '''inputs(B, C, N, M), policy_targets(B, N, M), value_targets(B, 1), losses(B, 1)'''
     inputs = inputs.cpu()
     policy_targets = policy_targets.cpu()
     value_targets = value_targets.cpu()
@@ -77,7 +81,14 @@ class ExpPool:
     if remove:
       del self.sorted_records[-batch_size:]
 
+    self.priority_decay()
+
     return input_tensors, policy_targets, value_targets, original_average_loss
+
+  def priority_decay(self):
+    for record in self.sorted_records:
+      record.priority *= self.decay_ratio
+    # no need readjust since order relation remain
 
   def save_to_disk(self, file_path: str):
     try:
@@ -109,22 +120,28 @@ class ExpPool:
 
   @property
   def loss_mean(self):
-    initialized_records = self.initialized_records
-    if len(initialized_records) == 0:
+    if len(self.sorted_records) == 0:
       raise ValueError('try to get the loss mean of an empty ExpPool')
+    initialized_records = self.initialized_records
+    if (len(initialized_records) == 0):
+      return 0
     return sum([record.loss for record in initialized_records]) / len(initialized_records)
 
   @property
   def loss_variance(self):
+    if len(len(self.sorted_records)) == 0:
+      raise ValueError('try to get the loss variance of an empty ExpPool')
     initialized_records = self.initialized_records
     if len(initialized_records) == 0:
-      raise ValueError('try to get the loss variance of an empty ExpPool')
+      return 0
     mean = self.loss_mean
     return sum([(record.loss - mean) ** 2 for record in initialized_records]) / len(initialized_records)
 
   @property
   def loss_median(self):
+    if len(self.sorted_records) == 0:
+      raise ValueError('try to get the loss median of an empty ExpPool')
     initialized_records = self.initialized_records
     if len(initialized_records) == 0:
-      raise ValueError('try to get the loss median of an empty ExpPool')
+      return 0
     return self.sorted_records[len(initialized_records) // 2].loss
