@@ -6,6 +6,7 @@
 
 - Alpha Zero, Deep Mind <https://deepmind.google/discover/blog/alphazero-shedding-new-light-on-chess-shogi-and-go/>
 - Deep Learning and the Game of Go, Kevin Ferguson and Max Pumperla <https://github.com/maxpumperla/deep_learning_and_the_game_of_go>
+- Leela Zero, Leela Zero Team <https://github.com/leela-zero/leela-zero>
 
 ![猪](docs/pic/zhu.jpg)
 \* 这是猪, 他没怎么样, 只是他很可爱想给你们看看.
