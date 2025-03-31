@@ -12,11 +12,11 @@ __all__ = [
 
 class Record:
   __slots__ = ['input_tensor', 'policy_target', 'value_target', 'loss']
-  
+
   def __init__(self, input_tensor: torch.Tensor, policy_target: torch.Tensor, value_target: torch.Tensor, loss: float):
     self.input_tensor = input_tensor.cpu().detach()
-    self.policy_target = policy_target.cpu().detach() if policy_target is not None else None
-    self.value_target = value_target.cpu().detach() if value_target is not None else None
+    self.policy_target = policy_target.cpu().detach()
+    self.value_target = value_target.cpu().detach()
     self.loss = loss
 
 class ExpPool:
@@ -29,13 +29,11 @@ class ExpPool:
 
     if self.size > self.capacity: # remove redundant records with minimal losses, leave the high losses records
       del self.sorted_records[:self.size - self.capacity]
-      
+
   def insert_tensor(self, inputs: torch.Tensor, policy_targets: torch.Tensor, value_targets: torch.Tensor, losses: torch.Tensor):
     inputs = inputs.cpu()
-    if policy_targets is None: policy_targets = torch.tensor([0] * len(inputs), device='cpu')
-    else: policy_targets = policy_targets.cpu()
-    if value_targets is None: value_targets = torch.tensor([0] * len(inputs), device='cpu')
-    else: value_targets = value_targets.cpu()
+    policy_targets = policy_targets.cpu()
+    value_targets = value_targets.cpu()
     losses = losses.cpu()
 
     batch_size = inputs.shape[0]
@@ -53,32 +51,27 @@ class ExpPool:
 
     self.insert_record(records)
 
-  def get_batch(self, batch_size: int, *, remove: bool = True, need_policy: bool = True, need_value: bool = True,
-    device = 'cuda' if torch.cuda.is_available() else 'cpu') \
+  def get_batch(self, batch_size: int, *, remove: bool = True, device = 'cuda' if torch.cuda.is_available() else 'cpu') \
     -> tuple[torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor], float]:
     '''
     return inputs(B, N, M), policy_targets(B, N, M), value_targets(B, 1), original_average_loss
-    
+
     by default, remove sampled records. after sampling and training, insert them back by users explicitly
     to update losses
-    '''  
+    '''
 
     if self.size < batch_size:
       print(f'runtime warning: exp pool too small to get_batch(): {self.size} vs. {batch_size} <{__file__}>')
       batch_size = self.size
-      
+
     if batch_size == 0:
       print(f'runtime warning: try to get batch with batch_size = 0 <{__file__}>')
-      return (
-        torch.tensor([]), 
-        torch.tensor([]) if need_policy else None, 
-        torch.tensor([]) if need_policy else None
-      )
+      return (torch.tensor([]), torch.tensor([]), torch.tensor([]))
 
     top_records = self.sorted_records[-batch_size:]
     input_tensors = torch.cat([record.input_tensor for record in top_records], dim=0).to(device=device)
-    policy_targets = torch.cat([record.policy_target for record in top_records], dim=0).to(device=device) if need_policy else None
-    value_targets = torch.cat([record.value_target for record in top_records], dim=0).to(device=device) if need_value else None
+    policy_targets = torch.cat([record.policy_target for record in top_records], dim=0).to(device=device)
+    value_targets = torch.cat([record.value_target for record in top_records], dim=0).to(device=device)
     original_average_loss = sum([record.loss for record in top_records]) / len(top_records)
 
     if remove:
@@ -101,11 +94,11 @@ class ExpPool:
         capacity, records = pickle.load(f)
     except (IOError, OSError) as e:
       print(f"ExpPool load failed: {e}")
-      
+
     exp_pool = cls(capacity)
     exp_pool.sorted_records = SortedList(records, key=lambda record: record.loss)
     return exp_pool
-  
+
   @property
   def size(self):
     return len(self.sorted_records)
@@ -120,7 +113,7 @@ class ExpPool:
     if len(initialized_records) == 0:
       raise ValueError('try to get the loss mean of an empty ExpPool')
     return sum([record.loss for record in initialized_records]) / len(initialized_records)
-  
+
   @property
   def loss_variance(self):
     initialized_records = self.initialized_records
@@ -128,7 +121,7 @@ class ExpPool:
       raise ValueError('try to get the loss variance of an empty ExpPool')
     mean = self.loss_mean
     return sum([(record.loss - mean) ** 2 for record in initialized_records]) / len(initialized_records)
-  
+
   @property
   def loss_median(self):
     initialized_records = self.initialized_records
