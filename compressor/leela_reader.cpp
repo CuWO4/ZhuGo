@@ -1,3 +1,7 @@
+#ifndef _CRT_SECURE_NO_WARNINGS
+#define _CRT_SECURE_NO_WARNINGS
+#endif
+
 #include "leela_reader.h"
 
 #include <cassert>
@@ -39,8 +43,8 @@ static bool is_end(FILE* fp) {
 
 
 bool get_from_leela_go_format(
-  bool& new_game,
   FILE* in,
+  bool& new_game,
   Player& player,
   bool& is_won,
   bool self_stones[],
