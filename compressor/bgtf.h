@@ -105,6 +105,7 @@ namespace BGTF { /* binary go train format */
   class BGTF {
   public:
     BGTF(const std::vector<Game>& games);
+    BGTF(std::vector<Game>&& games);
 
     explicit BGTF(std::string path);
 

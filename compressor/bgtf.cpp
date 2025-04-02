@@ -14,6 +14,8 @@ namespace BGTF {
 
 BGTF::BGTF(const std::vector<Game>& games) : games(games) {}
 
+BGTF::BGTF(std::vector<Game>&& games) : games(std::move(games)) {}
+
 BGTF::BGTF(std::string path) {
   assert(false && "not implemented");
 }
