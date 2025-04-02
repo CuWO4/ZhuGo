@@ -15,6 +15,19 @@ def kaiming_init_sequential(sequential: nn.Sequential, nonlinearity = 'leaky_rel
     if isinstance(module, nn.Sequential):
       kaiming_init_sequential(module, nonlinearity, a)
 
+class ParamAttentionMixing(nn.Module):
+  def __init__(self, min_alpha: float = 0.2, max_alpha: float = 0.8):
+    super(ParamAttentionMixing, self).__init__()
+    self.min_alpha = min_alpha
+    self.max_alpha = max_alpha
+    self.alpha = nn.Parameter(torch.tensor(0.0))
+
+  def forward(self, x, atten):
+    alpha = torch.sigmoid(self.alpha) * (self.max_alpha - self.min_alpha) + self.min_alpha
+
+    # (1 - alpha) * x + alpha * x * atten
+    return x + alpha * x * (atten - 1)
+
 class ECABlock(nn.Module):
   '''(B, C, N, M) -> (B, C, N, M)'''
   def __init__(self, channels: int, gamma: float = 2.0, beta: float = 1.0):
@@ -25,15 +38,17 @@ class ECABlock(nn.Module):
 
     self.conv1d = nn.Conv1d(1, 1, kernel_size = k_size, padding = (k_size - 1) // 2, bias = False)
 
+    self.param_attention_mixing = ParamAttentionMixing()
+
     nn.init.xavier_normal_(self.conv1d.weight)
 
   def forward(self, x):
-    y = x.mean((-2, -1), keepdim=True) # (B, C, N, M) -> (B, C, 1, 1)
-    y = y.squeeze(-1).permute(0, 2, 1) # (B, C, 1, 1) -> (B, 1, C)
-    y = self.conv1d(y)
-    y = y.permute(0, 2, 1).unsqueeze(-1) # (B, 1, C) -> (B, C, 1, 1)
-    y = torch.sigmoid(y)
-    return x * y
+    atten = x.mean((-2, -1), keepdim=True) # (B, C, N, M) -> (B, C, 1, 1)
+    atten = atten.squeeze(-1).permute(0, 2, 1) # (B, C, 1, 1) -> (B, 1, C)
+    atten = self.conv1d(atten)
+    atten = atten.permute(0, 2, 1).unsqueeze(-1) # (B, 1, C) -> (B, C, 1, 1)
+    atten = torch.sigmoid(atten)
+    return self.param_attention_mixing(x, atten)
 
 class CBAMBlock(nn.Module):
   '''(B, C, H, W) -> (B, C, H, W)'''
@@ -60,6 +75,8 @@ class CBAMBlock(nn.Module):
       nn.Sigmoid()
     )
 
+    self.param_attention_mixing = ParamAttentionMixing()
+
     nn.init.xavier_normal_(self.channel_avg_fc[0].weight)
     nn.init.zeros_(self.channel_avg_fc[0].bias)
     nn.init.xavier_normal_(self.channel_max_fc[0].weight)
@@ -83,7 +100,7 @@ class CBAMBlock(nn.Module):
     plane_concat = torch.cat([avg_plane, max_plane], dim=1)  # (B, 2, H, W)
     plane_atten = self.plane_atten(plane_concat)  # (B, 1, H, W)
 
-    return x * channel_atten * plane_atten
+    return self.param_attention_mixing(x, (channel_atten + plane_atten) / 2)
 
 class ResidualConvBlock(nn.Module):
   '''(B, C, N, M) -> (B, C, N, M)'''
