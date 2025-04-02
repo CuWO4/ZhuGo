@@ -35,30 +35,55 @@ class ECABlock(nn.Module):
     y = torch.sigmoid(y)
     return x * y
 
-class SEBlock(nn.Module):
-  '''(B, C, N, M) -> (B, C, N, M)'''
+class CBAMBlock(nn.Module):
+  '''(B, C, H, W) -> (B, C, H, W)'''
   def __init__(self, channels: int, reduction: int = 16):
-    super(SEBlock, self).__init__()
-
+    super(CBAMBlock, self).__init__()
     bottleneck_channels = channels // reduction
 
-    self.atten = nn.Sequential(
+    self.channel_avg_fc = nn.Sequential(
       nn.Linear(channels, bottleneck_channels),
-      nn.LeakyReLU(),
+      nn.LeakyReLU()
+    )
+    self.channel_max_fc = nn.Sequential(
+      nn.Linear(channels, bottleneck_channels),
+      nn.LeakyReLU()
+    )
+    self.channel_shared_fc = nn.Sequential(
       nn.Linear(bottleneck_channels, channels),
-      nn.Sigmoid(),
+      nn.Sigmoid()
     )
 
-    nn.init.kaiming_normal_(self.atten[0].weight, nonlinearity='leaky_relu', a = 0.01)
-    nn.init.xavier_normal_(self.atten[2].weight)
-    nn.init.zeros_(self.atten[0].bias)
-    nn.init.zeros_(self.atten[2].bias)
+    self.plane_atten = nn.Sequential(
+      nn.Conv2d(2, 1, kernel_size=7, padding=3, bias=False),
+      nn.BatchNorm2d(1),
+      nn.Sigmoid()
+    )
+
+    nn.init.xavier_normal_(self.channel_avg_fc[0].weight)
+    nn.init.zeros_(self.channel_avg_fc[0].bias)
+    nn.init.xavier_normal_(self.channel_max_fc[0].weight)
+    nn.init.zeros_(self.channel_max_fc[0].bias)
+    nn.init.xavier_normal_(self.channel_shared_fc[0].weight)
+    nn.init.zeros_(self.channel_shared_fc[0].bias)
+
+    nn.init.xavier_normal_(self.plane_atten[0].weight)
 
   def forward(self, x):
-    y = x.mean((-2, -1)) # (B, C, N, M) -> (B, C)
-    y = self.atten(y)
-    y = y.unsqueeze(-1).unsqueeze(-1) # (B, C) -> (B, C, 1, 1)
-    return x * y
+    avg_pool = torch.mean(x, dim=(-2, -1))  # (B, C)
+    max_pool = torch.amax(x, dim=(-2, -1))  # (B, C)
+
+    channel_avg = self.channel_avg_fc(avg_pool)
+    channel_max = self.channel_max_fc(max_pool)
+    channel_atten = self.channel_shared_fc(channel_avg + channel_max)  # (B, C)
+    channel_atten = channel_atten.unsqueeze(-1).unsqueeze(-1)  # (B, C, 1, 1)
+
+    avg_plane = torch.mean(x, dim=1, keepdim=True)  # (B, 1, H, W)
+    max_plane = torch.amax(x, dim=1, keepdim=True)  # (B, 1, H, W)
+    plane_concat = torch.cat([avg_plane, max_plane], dim=1)  # (B, 2, H, W)
+    plane_atten = self.plane_atten(plane_concat)  # (B, 1, H, W)
+
+    return x * channel_atten * plane_atten
 
 class ResidualConvBlock(nn.Module):
   '''(B, C, N, M) -> (B, C, N, M)'''
@@ -190,7 +215,7 @@ class ZhuGoSharedResNet(nn.Module):
 
       # attention
       nn.BatchNorm2d(last_channel),
-      SEBlock(last_channel, reduction = 8),
+      CBAMBlock(last_channel, reduction = 8),
       nn.LeakyReLU(),
 
       # bottleneck convolution
@@ -217,7 +242,7 @@ class ZhuGoPolicyHead(nn.Module):
         for _ in range(policy_residual_depth)
       ],
       nn.BatchNorm2d(bottleneck_channels),
-      SEBlock(bottleneck_channels, reduction = 8),
+      CBAMBlock(bottleneck_channels, reduction = 8),
       nn.LeakyReLU(),
       nn.Conv2d(bottleneck_channels, bottleneck_channels // 2, kernel_size=1, bias=False),
       nn.BatchNorm2d(bottleneck_channels // 2),
@@ -249,7 +274,7 @@ class ZhuGoValueHead(nn.Module):
         for _ in range(value_residual_depth)
       ],
       nn.BatchNorm2d(bottleneck_channels),
-      SEBlock(bottleneck_channels, reduction = 8),
+      CBAMBlock(bottleneck_channels, reduction = 8),
       nn.LeakyReLU(),
     )
 
