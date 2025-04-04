@@ -6,6 +6,7 @@ tmp/
 devlog/
 models/
 dataset/
+zhugoenv/
 
 *.pyd
 *.model
@@ -15,3 +16,4 @@ dataset/
 *.tmp
 *.log
 *.prof
+*.so
