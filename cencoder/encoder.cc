@@ -8,6 +8,9 @@ extern "C" {
 #include "ladder.h"
 
 #include <array>
+#include <cstdlib>
+#include <cstring>
+#include <algorithm>
 
 #define ENCODER_FORMAL_ARGS float* data, int& offset, Board* board, Board* last_board, Piece player
 
