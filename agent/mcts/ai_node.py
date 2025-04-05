@@ -42,8 +42,9 @@ class AINode(Node):
     self.noise_intensity = noise_intensity
     self.noise = noise
 
-    input_tensor = encoder.encode(game_state).unsqueeze(0)
-    policy_logits, value_logits = model(input_tensor)
+    with torch.no_grad():
+      input_tensor = encoder.encode(game_state).unsqueeze(0)
+      policy_logits, value_logits = model(input_tensor)
 
     policy_probs = torch.cat([
       torch.flatten(policy_logits.detach()),
