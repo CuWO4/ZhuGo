@@ -13,10 +13,12 @@ __all__ = [
   'load',
 ]
 
+
 MODEL_FILE = 'model.model'
 MODEL_SETTING_FILE = 'model.json'
 TENSORBOARD_DIR = 'tensorboard'
 META_DATA_FILE = 'meta.json'
+DEPLOY_FILE = 'model.pt'
 
 def create(ModelType: type, model_params: dict, path: str, dumb_input: torch.Tensor) -> None:
   os.makedirs(path)
@@ -95,3 +97,33 @@ def load_summary_writer(path: str) -> SummaryWriter:
   finally:
     writer.close()
     print('summary writer closed')
+
+def deploy(ModelType: type, path: str, dumb_input: torch.Tensor):
+  '''generate static TorchScript version of model'''
+  model = load(ModelType, path, device = 'cpu')
+
+  model.eval()
+  with torch.no_grad():
+    dumb_input = dumb_input.cpu()
+    jit_model = torch.jit.trace(model, dumb_input)
+
+  jit_model_path = os.path.join(path, DEPLOY_FILE)
+  jit_model.save(jit_model_path)
+
+  print('model deployed')
+
+def load_deployed_model(
+  path: str, 
+  device = 'cuda' if torch.cuda.is_available() else 'cpu',
+  warmup_dumb_input: torch.Tensor | None = None
+) -> torch.jit.ScriptModule:
+  jit_model_path = os.path.join(path, DEPLOY_FILE)
+  model = torch.jit.load(jit_model_path).to(device = device)
+
+  if warmup_dumb_input is not None:
+    warmup_dumb_input = warmup_dumb_input.to(device = device)
+    model(warmup_dumb_input)
+
+  print('deployed model successfully loaded')
+
+  return model
