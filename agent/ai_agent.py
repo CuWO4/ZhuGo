@@ -26,7 +26,7 @@ class AIAgent(MCTSAgent):
     super().__init__(node_type_name='agent.mcts.ai_node.AINode', node_settings=node_settings)
 
     if isinstance(model, str):
-      self.model, _, _ = load(ZhuGo, model)
+      self.model = load(ZhuGo, model)
     else:
       assert isinstance(self.model, ZhuGo)
       self.model = model

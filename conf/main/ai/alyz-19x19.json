@@ -1,0 +1,18 @@
+{
+  "mode": "analysis",
+  "agents": [
+    {
+      "class_name": "agent.ai_agent.AIAgent",
+      "args": {
+        "model": "models/19x19",
+        "node_settings": {}
+      }
+    }
+  ],
+  "gui": "ui.tk_gui.TkGUI",
+  "game": {
+    "is_privileged_mode": true,
+    "board_size": [19, 19],
+    "komi": 7.5
+  }
+}
