@@ -91,7 +91,7 @@ def load_summary_writer(path: str) -> SummaryWriter:
   tb_dir = os.path.join(path, TENSORBOARD_DIR)
   writer = SummaryWriter(tb_dir)
   print('summary writer successfully loaded')
-  
+
   try:
     yield writer
   finally:
@@ -113,7 +113,7 @@ def deploy(ModelType: type, path: str, dumb_input: torch.Tensor):
   print('model deployed')
 
 def load_deployed_model(
-  path: str, 
+  path: str,
   device = 'cuda' if torch.cuda.is_available() else 'cpu',
   warmup_dumb_input: torch.Tensor | None = None
 ) -> torch.jit.ScriptModule:

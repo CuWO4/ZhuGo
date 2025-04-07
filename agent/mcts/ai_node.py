@@ -53,10 +53,11 @@ class AINode(Node):
     policy_probs += (torch.tensor(self.legal_mask, device=policy_logits.device) - 1) * 1e5
     policy_probs = torch.softmax(policy_probs, dim=-1)
     if noise_intensity != 0:
-      policy_probs += noise_intensity \
-        * noise(torch.tensor([0.03] * policy_probs.shape[0], device = policy_logits.device)) \
-          .sample(1)[0] \
+      policy_probs += (
+        noise_intensity
+        * noise(torch.tensor([0.03] * policy_probs.shape[0], device = policy_logits.device)) .sample(1)[0]
         * self.legal_mask
+      )
       policy_probs /= torch.sum(policy_probs)
 
     self.policy = policy_probs.cpu().numpy()

@@ -14,7 +14,7 @@ def parse_args() -> tuple[str]:
     help='path to configuration file, check conf/main/ for more details.'
   )
   args = parser.parse_args()
-  
+
   return (args.conf,)
 
 def create_agents(agents_confs: list[dict]) -> list[Agent]:
@@ -33,9 +33,9 @@ def get_main_json_conf(conf_path: str) -> tuple[str, list[Agent], type, dict]:
     agents = create_agents(config.get('agents'))
     UIClass = load_class_by_name(config.get('gui'))
     game_settings = config.get('game')
-    
+
     return mode, agents, UIClass, game_settings
-    
+
 def main():
   init.init()
   (conf_path,) = parse_args()

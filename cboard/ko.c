@@ -16,7 +16,7 @@ inline bool is_single_piece(Board* board, int row, int col) {
       return false;
     }
   }
-  
+
   return true;
 }
 
@@ -29,7 +29,7 @@ bool does_violate_ko(Board *board, Piece player, int row, int col, Board *last_b
   }
 
   if (
-    get_piece(last_board, row, col) != player 
+    get_piece(last_board, row, col) != player
     || !is_single_piece(last_board, row, col)
   ) {
     return false;

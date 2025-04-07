@@ -28,7 +28,7 @@ class Record:
   @property
   def priority(self):
     return self.loss * self.decay_coeff
-  
+
   @staticmethod
   def from_tensors(
     inputs: torch.Tensor, # (B, C, N, M)

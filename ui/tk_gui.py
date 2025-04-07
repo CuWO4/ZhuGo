@@ -21,11 +21,11 @@ class TkGUI(UI):
     self.mcts_connection, renderer_mcts_connection = mp.Pipe()
 
     self.renderer_process = mp.Process(
-      target=TkRenderer, 
+      target=TkRenderer,
       args=(
-        renderer_game_state_connection, 
-        renderer_move_connection, 
-        renderer_mcts_connection, 
+        renderer_game_state_connection,
+        renderer_move_connection,
+        renderer_mcts_connection,
         row_n, col_n
       )
     )
@@ -37,7 +37,7 @@ class TkGUI(UI):
 
   def display_mcts(self, data: MCTSData):
     self.mcts_connection.send(data)
-    
+
   def get_move(self, block: bool = True) -> Move | None:
     if block:
       return self.move_connection.recv()
@@ -47,8 +47,8 @@ class TkGUI(UI):
   def _clear_moves(self):
     while self.move_connection.poll():
       self.move_connection.recv()
-  
-    
+
+
 def cal_transparent(background_color: str, foreground_color: str, alpha: int) -> str:
   def hex_to_rgb(hex_color: str) -> tuple:
     return tuple(int(hex_color[i:i+2], 16) for i in (1, 3, 5))
@@ -58,11 +58,11 @@ def cal_transparent(background_color: str, foreground_color: str, alpha: int) ->
 
   B_R, B_G, B_B = hex_to_rgb(background_color)
   F_R, F_G, F_B = hex_to_rgb(foreground_color)
-  
+
   R_R = (1 - alpha / 255) * B_R + (alpha / 255) * F_R
   R_G = (1 - alpha / 255) * B_G + (alpha / 255) * F_G
   R_B = (1 - alpha / 255) * B_B + (alpha / 255) * F_B
-  
+
   return rgb_to_hex(int(R_R), int(R_G), int(R_B))
 
 class TkRenderer:
@@ -89,13 +89,13 @@ class TkRenderer:
     self.col_n: int = col_n
     self.cell_size: int = cell_size
     self.padding: int = padding
-    
+
     self.winning_rate_bar_height: int = winning_rate_bar_height
 
     self.backgroundd_color = backgroundd_color
 
     self.font: str = font
-    
+
     self.window_w: int = cell_size * (col_n - 1) + 2 * padding
     self.window_h: int = cell_size * (row_n - 1) + 2 * padding
     self.root: tk.Tk = tk.Tk()
@@ -118,7 +118,7 @@ class TkRenderer:
 
     self.resign_button: tk.Button = tk.Button(self.root, text="Resign", command=self.on_resign_button)
     self.resign_button.pack(side=tk.LEFT, padx=10, pady=10)
-    
+
     self.undo_button: tk.Button = tk.Button(self.root, text='Undo', command=self.on_undo_botton)
     self.undo_button.pack(side=tk.LEFT, padx=10, pady=10)
 
@@ -134,7 +134,7 @@ class TkRenderer:
 
       while self.mcts_connection.poll():
         self.cur_mcts_data = self.mcts_connection.recv()
-        
+
       self.draw_board()
 
       self.root.after(self.refresh_ms, check_update)
@@ -245,17 +245,17 @@ class TkRenderer:
       cx - radius, cy - radius, cx + radius, cy + radius,
       fill=color, outline=color
     )
-    
+
   def draw_semitransparent_mcts_point(
     self,
-    x: int, y: int, 
+    x: int, y: int,
     color: str, alpha: int,
     visited_time: int, q: float
   ):
     color = cal_transparent(self.backgroundd_color, color, alpha)
     line_color = cal_transparent('#000000', color, alpha)
     self.draw_piece(x, y, color)
-    
+
     cx = self.padding + x * self.cell_size
     cy = self.padding + y * self.cell_size
 
@@ -266,7 +266,7 @@ class TkRenderer:
       cy + self.cell_size // 2 if y < self.row_n - 1 else cy,
       fill = line_color
     )
-    
+
     self.canvas.create_line(
       cx - self.cell_size // 2 if x > 0 else cx,
       cy,
@@ -274,27 +274,27 @@ class TkRenderer:
       cy,
       fill = line_color
     )
-    
+
     vertical_bias = 5
     self.canvas.create_text(cx, cy - vertical_bias, text=f'{q:.2f}', font=(self.font, 10), fill='black')
     self.canvas.create_text(cx, cy + vertical_bias, text=f'{int(visited_time)}', font=(self.font, 10), fill='black')
-    
+
 
   def draw_mcts_state(self):
     if self.cur_mcts_data is None:
       return
-    
+
     self.draw_mcts_q_bar()
-    
+
     best_move_pos = self.cur_mcts_data.best_pos()
-    
+
     for x in range(self.col_n):
       for y in range(self.row_n):
         q, visited_time = self.cur_mcts_data.get(row=y, col=x)
 
         if visited_time < 5:
           continue
-        
+
         if (y, x) == best_move_pos:
           candidate_color = '#0CE6E6' # HSV: 180 95 90
           self.draw_piece(x, y, '#5A5A5A', 2)
@@ -317,23 +317,25 @@ class TkRenderer:
             if q <= upper_bound:
               candidate_color = color
               break
-            
+
           def compress_f(x):
-            return 1 - 1 / (x + 1)  
-          
+            return 1 - 1 / (x + 1)
+
           alpha = int(255 * (0.5 + 0.5 *compress_f(visited_time / 500)))
-            
-        self.draw_semitransparent_mcts_point(x, y, candidate_color, alpha, visited_time, q)        
+
+        self.draw_semitransparent_mcts_point(x, y, candidate_color, alpha, visited_time, q)
 
   def draw_mcts_q_bar(self):
     if self.cur_mcts_data.win_rate is None:
       return
-    
-    black_win_rate = self.cur_mcts_data.win_rate \
-      if self.cur_game_state.next_player == Player.black \
+
+    black_win_rate = (
+      self.cur_mcts_data.win_rate
+      if self.cur_game_state.next_player == Player.black
       else 1 - self.cur_mcts_data.win_rate
+    )
     white_win_rate = 1 - black_win_rate
-    
+
     width = self.window_w - 2 * self.padding
 
     x0 = self.padding
@@ -342,12 +344,12 @@ class TkRenderer:
     def linear_compress(value, min, max, new_min, new_max):
       assert max > min and new_max > new_min
       return ((value - min) / (max - min)) * (new_max - new_min) + new_min
-    
+
     black_width = width * black_win_rate
     # avoid confusion with winning rate text
     black_width = int(linear_compress(
-      black_width, 
-      0, width, 
+      black_width,
+      0, width,
       self.winning_rate_bar_height * 1.6, width - self.winning_rate_bar_height * 1.6
     ))
 
@@ -359,16 +361,16 @@ class TkRenderer:
     def render_win_rate_text(player: Player, win_rate: float):
       is_black = player == Player.black
       self.canvas.create_text(
-        x0 + gap if is_black else x0 + width - gap, 
-        y0 + self.winning_rate_bar_height // 2 - 1, 
+        x0 + gap if is_black else x0 + width - gap,
+        y0 + self.winning_rate_bar_height // 2 - 1,
         text=f'{win_rate * 100:.1f}', font=(self.font, self.winning_rate_bar_height // 2),
-        fill='white' if is_black else 'black', 
+        fill='white' if is_black else 'black',
         anchor='w' if is_black else 'e'
       )
-    
+
     render_win_rate_text(Player.black, black_win_rate)
     render_win_rate_text(Player.white, white_win_rate)
-    
+
   def draw_message(self):
     if self.cur_game_state.is_over():
       winner = 'white' if self.cur_game_state.winner() == Player.white else 'black'
@@ -388,7 +390,7 @@ class TkRenderer:
         self.draw_board()
     else:
       self.mouse_hover_pos = None
-      
+
   def on_mouse_leave(self, event):
     self.mouse_hover_pos = None
 
@@ -406,22 +408,22 @@ class TkRenderer:
 
   def on_undo_botton(self):
     self.send_undo()
-    
+
   def on_tab(self, event: tk.Event):
     self.send_pass_turn()
-    
+
   def on_ctrl_z(self, event: tk.Event):
     self.send_undo()
-    
+
   def send_play(self, row, col):
     '''indexing starts from 1'''
     self.move_connection.send(Move.play(Point(row=row, col=col)))
 
   def send_pass_turn(self):
     self.move_connection.send(Move.pass_turn())
-    
+
   def send_resign(self):
     self.move_connection.send(Move.resign())
-    
+
   def send_undo(self):
     self.move_connection.send(Move.undo())

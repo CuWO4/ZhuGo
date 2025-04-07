@@ -9,13 +9,13 @@ def start_analysis(agent: Agent, UIClass: type, game_settings: dict):
 
   ui: UI = UIClass(*game.board.size)
   ui.update(game)
-  
+
   agent.link_to_ui(ui)
-  
+
   while not game.is_over():
     move = agent.select_move(game)
     game = game.apply_move(move)
     ui.update(game)
     time.sleep(0.05)
-    
+
   input(f'game ends. winner: {game.winner()}. press Enter to continue...')
