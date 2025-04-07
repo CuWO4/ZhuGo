@@ -14,7 +14,7 @@ def parse_args() -> tuple[str]:
     help='path to configuration file, check conf/model/ for more details.'
   )
   args = parser.parse_args()
-  
+
   return args.path, args.conf
 
 def main():
@@ -22,7 +22,7 @@ def main():
 
   with open(conf_path, 'r') as config_file:
     model_settings = json.load(config_file)
-  
+
   # importing includes torch, which is significantly slow
   # import after when command format is correct
   from ai.zhugo import ZhuGo
@@ -30,7 +30,7 @@ def main():
   from ai.encoder.zhugo_encoder import ZhuGoEncoder
 
   dumb_input = ZhuGoEncoder().encode(GameState.new_game(model_settings['board_size'])).unsqueeze(0)
-    
+
   create(ZhuGo, model_settings, path, dumb_input)
 
 if __name__ == '__main__':

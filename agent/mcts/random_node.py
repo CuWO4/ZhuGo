@@ -19,17 +19,17 @@ __all__ = [
 
 T = TypeVar('T', bound='RandomNode')
 class RandomNode(Node):
-  def __init__(self, *, game_state: GameState, pool: mp.Pool, 
+  def __init__(self, *, game_state: GameState, pool: mp.Pool,
                c: float = 1.0, depth: int = 4):
     super().__init__(game_state=game_state, pool=pool, c=c)
 
     self.depth = depth
-    
+
     self.win_count: int = 0
 
     self._visited_times: np.ndarray = np.zeros(self.policy_size)
     self.margin_sums: np.ndarray = np.zeros(self.policy_size)
-    
+
     self.total_visited_times: int = 0
     self.total_margin_sum: float = 0
     self.total_margin_biases: float = 0
@@ -78,21 +78,23 @@ class RandomNode(Node):
   def analyze_game_result(self, move_idx: int, game_result: GameResult):
     if game_result.winner == self.game_state.next_player:
       self.win_count += 1
-    
+
     self.__is_q_dirty = True
     self.__is_ucb_dirty = True
-    
-    winning_margin = (1 if game_result.winner == self.game_state.next_player else -1) \
+
+    winning_margin = (
+      (1 if game_result.winner == self.game_state.next_player else -1)
       * game_result.winning_margin
+    )
 
     self._visited_times[move_idx] += 1
     self.margin_sums[move_idx] += winning_margin
-    
+
     self.total_margin_biases += (winning_margin - self.total_margin_sum / (self.total_visited_times + 1e-8)) ** 2
     self.total_visited_times += 1
     self.total_margin_sum += winning_margin
-    
-  def branch(self: T, move: Move) -> T: 
+
+  def branch(self: T, move: Move) -> T:
     move_idx = move_to_idx(move, self.game_state.board.size)
     if self.branches[move_idx] is None:
       self.branches[move_idx] = RandomNode(
@@ -124,10 +126,10 @@ class RandomNode(Node):
 
     self.__q_cache = (self.margin_sums / (self._visited_times + 1e-8) - mean) / std
     self.__q_cache = (self.__q_cache + 1) / 2
-    
+
     self.__is_q_dirty = False
     return self.__q_cache
-  
+
   @property
   def visited_times(self) -> np.ndarray[float]:
     return self._visited_times
@@ -163,8 +165,7 @@ class RandomNode(Node):
     return results
 
   @staticmethod
-  def simulate_worker(thread_id: int, game, move_idx: int, AgentType: type) \
-    -> tuple[int, GameResult]:
+  def simulate_worker(thread_id: int, game, move_idx: int, AgentType: type) -> tuple[int, GameResult]:
     usec = datetime.datetime.now().microsecond
     seed = thread_id + int(usec) & 0xFFFF_FFFF
     np.random.seed(seed)
