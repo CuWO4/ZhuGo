@@ -32,33 +32,25 @@ class PredictResult:
 class AINode(Node):
   def __init__(
     self, model: ZhuGo, encoder: ZhuGoEncoder,
-    noise_intensity: float, noise: type,
     *, game_state: GameState, pool: mp.Pool, c: float = 1.0
   ):
     super().__init__(game_state=game_state, pool=pool, c=c)
 
     self.model = model
     self.encoder = encoder
-    self.noise_intensity = noise_intensity
-    self.noise = noise
 
     with torch.no_grad():
       input_tensor = encoder.encode(game_state).unsqueeze(0)
       policy_logits, value_logits = model(input_tensor)
+      policy_logits = policy_logits.detach()
+      value_logits = value_logits.detach()
 
     policy_probs = torch.cat([
       torch.flatten(policy_logits.detach()),
-      torch.tensor([-1e5], device=policy_logits.device, dtype=policy_logits.dtype)
+      torch.tensor([-1e5], device=policy_logits.device, dtype=policy_logits.dtype) # pass turn: never
     ])
     policy_probs += (torch.tensor(self.legal_mask, device=policy_logits.device) - 1) * 1e5
     policy_probs = torch.softmax(policy_probs, dim=-1)
-    if noise_intensity != 0:
-      policy_probs += (
-        noise_intensity
-        * noise(torch.tensor([0.03] * policy_probs.shape[0], device = policy_logits.device)) .sample(1)[0]
-        * self.legal_mask
-      )
-      policy_probs /= torch.sum(policy_probs)
 
     self.policy = policy_probs.cpu().numpy()
     self.value = torch.tanh(value_logits.detach().cpu())[0, 0].item()
@@ -114,14 +106,13 @@ class AINode(Node):
     move_idx = move_to_idx(move, self.game_state.board.size)
     if self.branches[move_idx] is None:
       self.branches[move_idx] = AINode(
-        self.model, self.encoder, 0, self.noise,
+        self.model, self.encoder,
         game_state=self.game_state.apply_move(move),
         pool=self.pool, c=self.c
       )
     return self.branches[move_idx]
 
   def switch_branch(self, move: Move) -> 'AINode':
-    self.branch(move).noise_intensity = self.noise_intensity
     return self.branch(move)
 
   def wrap_to_result(self) -> PredictResult:
