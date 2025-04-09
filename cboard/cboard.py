@@ -11,9 +11,9 @@ from .boardmodule import (
    serialize,
    deserialize,
    does_violate_ko as does_violate_ko_c,
-) 
+)
 # visit C extension functions by `boardmodule.xxx` may fail and get None when torch.nn is imported
-# before this file for unknown reason, while `from ... import ...` would not trigger the bug 
+# before this file for unknown reason, while `from ... import ...` would not trigger the bug
 
 __all__ = [
   'cBoard',
@@ -37,7 +37,7 @@ class cBoard:
 
   def qi(self, row: int, col: int) -> int:
     return get_qi(self._c_board, row, col)
-  
+
   def get_random_qi_pos(self, row: int, col: int) -> tuple[int, int]:
     return get_random_qi_pos(self._c_board, row, col)
 
@@ -49,13 +49,13 @@ class cBoard:
 
   def hash(self) -> int:
     return zobrist_hash(self._c_board)
-  
+
   def to_board_data(self):
     return [
       [self.get(row, col) for col in range(self.cols)]
       for row in range(self.rows)
     ]
-    
+
   @staticmethod
   def from_board_data(borad_data):
     rows = len(borad_data)
@@ -66,12 +66,12 @@ class cBoard:
       for c, player in enumerate(row):
         place_piece(c_board, r, c, player)
     return c_board
-  
+
   def __getstate__(self) -> dict:
     state = self.__dict__.copy()
     state['_c_board'] = serialize(self._c_board)
     return state
-  
+
   def __setstate__(self, state: dict):
     self.__dict__.update(state)
     self._c_board = deserialize(self._c_board)

@@ -30,7 +30,7 @@ mv encodermodule.[YOUR_ARCH].pyd cencoder/encodermodule.[YOUR_ARCH].pyd
 ## Usage
 
 ```shell
-python main.py -c CONF 
+python main.py -c CONF
 ```
 
 将依照配置文件启动棋局. 配置文件可修改棋局信息(如棋盘尺寸, 贴目等), 双方代理(如人类棋手, 传统随机蒙特卡洛树搜索算法bot等), 使用的 GUI等等. 具体可以参考 `conf/main/`.
