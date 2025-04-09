@@ -73,12 +73,12 @@
 
  *
  *  Note:   - the board is 0-based.
- *          - let N be the count of invalid coordinates in a move. a coordinate (row or column)
- *            is invalid if it's not in the range [0, 19) (i.e., < 0 or ≥ 19). a move will be 
- *            treated as:
- *              <​N = 0> a valid move,
- *              <​N = 1> passing turn,
- *              <​N = 2> resigning.
+ *          - decoded move = match (row, col) {
+ *              (row, col) if 0 <= row, col < 19 => valid move on (row, col) (0-based board),
+ *              (row, col) if row, col == 19 => new game,
+ *              (row, col) if row, col == 20 => pass turn,
+ *              _ => resign (runtime warning should be reported)
+ *            }
  *          - target policy target is row-first arranged 19x19 [0:360] + pass [361],
  *            which means the index of 0-based (row, col) is row * 19 + col.
  *          - padding depends on implementation. best practice to access game is through
