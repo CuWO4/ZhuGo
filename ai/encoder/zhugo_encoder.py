@@ -15,7 +15,8 @@ class ZhuGoEncoder(Encoder):
   input planes:
     self's stone          1     1/0
     opponent's stone      1     1/0
-    player                1     1/0                   all 1 if black, otherwise all 0
+    player                2     1/0                   all 1 if black, otherwise all 0 for first plane; all 0 if black otherwise 1 for
+                                                      the second, to avoid bias introduce by zero padding
     valid move            1     1/0                   fill own eye is invalid
     qi(气)                8     1/0 ramp encoding     qi of certain stone string
     qi after play         8     1/0 ramp encoding     qi of certain stone string after play. 0 if invalid move
@@ -24,10 +25,10 @@ class ZhuGoEncoder(Encoder):
     ko(劫争)              1     1/0                   1 if certain position is invalid because of ko
     position              1     continuous            how close the position is to the corner, nonlinear
     ----------------------------------------------
-    sum                   25
+    sum                   26
   '''
 
-  CHANNELS = 25
+  CHANNELS = 26
 
   def __init__(self, *, device: str = 'cuda' if torch.cuda.is_available() else 'cpu') -> None:
     super().__init__(device=device)
