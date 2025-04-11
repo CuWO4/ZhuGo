@@ -30,17 +30,13 @@ class AIAgent(MCTSAgent):
       try: # try to load deployed model
         warmup_dumb_input = self.encoder.encode(GameState.new_game()).unsqueeze(0)
         self.model = load_deployed_model(model, warmup_dumb_input = warmup_dumb_input)
-      except Exception: # load native pytorch model
+      except Exception: # failed, load native pytorch model instead
         self.model = load(ZhuGo, model)
       self.model.eval()
     else:
       assert isinstance(self.model, ZhuGo)
       self.model = model
 
-    self.noise_intensity = noise_intensity
-    self.noise = torch.distributions.Dirichlet
-
-  # override
   def update_ui_mcts(self):
     assert self.ui is not None
     self.ui.display_mcts(MCTSData(
@@ -55,6 +51,6 @@ class AIAgent(MCTSAgent):
 
   def construct_root(self, game_state: GameState) -> Node:
     return AINode(
-      self.model, self.encoder, self.noise_intensity, self.noise,
+      self.model, self.encoder,
       game_state=game_state, pool=self.pool, **self.node_settings
     )

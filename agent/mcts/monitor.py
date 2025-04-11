@@ -8,10 +8,10 @@ from matplotlib.ticker import MaxNLocator
 class Monitor:
   def __init__(self, data_connection: connection.Connection):
     self.data_connection = data_connection
-    
+
     self.background_color = '#CDAC6A'
     self.font = ('Consolas', 12)
-    
+
     self.root = tk.Tk()
     self.root.title("MCTS Monitor")
 
@@ -35,7 +35,7 @@ class Monitor:
     self.fig, self.ax = plt.subplots(figsize=(4, 3))
     self.line_black, = self.ax.plot(self.turns, self.black_win_rates, color='black')
     self.line_white, = self.ax.plot(self.turns, self.white_win_rates, color='white')
-    
+
     self.ax.set_ylim(0, 1)
     self.ax.xaxis.set_major_locator(MaxNLocator(integer=True, prune='lower', steps=[1]))
 
@@ -50,18 +50,18 @@ class Monitor:
     self.canvas.get_tk_widget().pack()
 
     self.root.after(50, self.update_plot)
-    
+
     self.root.mainloop()
-    
+
   def update_plot(self):
     self.update_data()
-    
+
     self.line_black.set_xdata(self.turns)
     self.line_black.set_ydata(self.black_win_rates)
 
     self.line_white.set_xdata(self.turns)
     self.line_white.set_ydata(self.white_win_rates)
-    
+
     self.ax.relim()
     self.ax.autoscale_view()
 

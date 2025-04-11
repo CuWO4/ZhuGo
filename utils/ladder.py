@@ -67,7 +67,7 @@ def analyze_gostring(board: Board, point: Point) -> tuple[bool, int, set[Point]]
 
   if after_escape_board.qi(escape_point) > 2:
     return False, 0, set()  # escaped
-  
+
   if after_escape_board.qi(escape_point) <= 1:
     return True, 1, set([escape_point])
 
@@ -93,8 +93,10 @@ def analyze_gostring(board: Board, point: Point) -> tuple[bool, int, set[Point]]
       if not after_chasing_board.in_board(neighbor):
         continue
 
-      if after_chasing_board.get(neighbor) is None \
-        or after_chasing_board.get(neighbor) == escaping_player:
+      if (
+        after_chasing_board.get(neighbor) is None
+        or after_chasing_board.get(neighbor) == escaping_player
+      ):
         continue
 
       if after_chasing_board.qi(neighbor) <= 1: # escaped
@@ -113,7 +115,7 @@ def analyze_gostring(board: Board, point: Point) -> tuple[bool, int, set[Point]]
 
   return is_captured, escape_steps, escape_path
 
-# For complex situations, each analysis takes about 5ms, and multiprocessing has not been able yet. 
+# For complex situations, each analysis takes about 5ms, and multiprocessing has not been able yet.
 # It is not a performance hotspot for the time being, so more complex optimizations are not considered.
 def analyze_ladder(board: Board, threshold: int = 4) -> LadderAnalysis:
   """Analyze the board for ladder situations and return analysis.
@@ -125,25 +127,25 @@ def analyze_ladder(board: Board, threshold: int = 4) -> LadderAnalysis:
   Returns:
     LadderAnalysis: The analysis results.
   """
-  
+
   def get_go_string(board: Board, point: Point, visited_points: set[Point]) -> set[Point]:
     if point in visited_points:
       return set()
     visited_points.update([point])
-    
+
     stone = board.get(point)
     if stone is None:
       return set()
-    
+
     stones = set([point])
-    
+
     for neighbor in point.neighbors():
       if not board.in_board(neighbor):
         continue
 
       if board.get(neighbor) == stone:
         stones |= get_go_string(board, neighbor, visited_points)
-      
+
     return stones
 
   ladder_analysis = LadderAnalysis()
