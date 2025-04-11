@@ -51,9 +51,17 @@ def load_game(file: BufferedReader, game_offset: int, endian: str) -> Iterator[t
   game = GameState.new_game()
 
   for move, policy_target in load_turns(file, turn_count, endian):
+    if __debug__:
+      if move and move.is_play and game.board.get(point=move.point) is not None:
+        print(f'runtime warning: bad move on offset <{file.tell():x}>')
+
+        print(game.board, game.next_player, move.point)
+
+        print(game.apply_move(move).board)
+
     if move is not None:
       game = game.apply_move(move)
-
+      
     policy_tensor = torch.tensor(policy_target[:361], device = 'cpu').view(19, 19)
     policy_tensor /= torch.sum(policy_tensor) + 1e-8
     value_tensor = torch.tensor([value_target], device = 'cpu')
