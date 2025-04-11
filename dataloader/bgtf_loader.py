@@ -54,11 +54,11 @@ def load_game(file: BufferedReader, game_offset: int, endian: str) -> Iterator[t
     if move is not None:
       game = game.apply_move(move)
 
-    policy_target = torch.tensor(policy_target[:361], device = 'cpu').view(19, 19)
-    policy_target /= torch.sum(policy_target) + 1e-8
-    value_target = torch.tensor([value_target], device = 'cpu')
+    policy_tensor = torch.tensor(policy_target[:361], device = 'cpu').view(19, 19)
+    policy_tensor /= torch.sum(policy_tensor) + 1e-8
+    value_tensor = torch.tensor([value_target], device = 'cpu')
 
-    yield game, policy_target, value_target
+    yield game, policy_tensor, value_tensor
 
     value_target = -value_target
 
