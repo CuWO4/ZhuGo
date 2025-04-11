@@ -16,6 +16,8 @@ SRCS := $(wildcard *.$(EXTERN))
 OBJS := $(patsubst %.$(EXTERN), $(TMPDIR)/%.o, $(SRCS))
 DEPS := $(patsubst %.$(EXTERN), $(TMPDIR)/%.d, $(SRCS))
 
+RUNARGS ?=
+
 # link #
 $(DEBUGDIR)/$(TARGET) : $(OBJS) | $(DEBUGDIR)
 	@ echo linking...
@@ -40,7 +42,7 @@ $(DEBUGDIR) :
 # run command #
 .PHONY : run
 run : $(DEBUGDIR)/$(TARGET)
-	./$(DEBUGDIR)/$(TARGET)
+	./$(DEBUGDIR)/$(TARGET) $(RUNARGS)
 
 # clean command #
 .PHONY : clean
