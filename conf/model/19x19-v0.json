@@ -1,10 +1,10 @@
 {
-  "board_size": [19, 19], 
-  "input_channels": 25, 
-  "residual_channels": [96, 64], 
-  "residual_depths": [5, 2], 
-  "bottleneck_channels": 48, 
-  "policy_residual_depth": 5, 
-  "value_residual_depth": 3, 
+  "board_size": [19, 19],
+  "input_channels": 25,
+  "residual_channels": [96, 64],
+  "residual_depths": [5, 2],
+  "bottleneck_channels": 48,
+  "policy_residual_depth": 5,
+  "value_residual_depth": 3,
   "value_middle_width": 64
 }

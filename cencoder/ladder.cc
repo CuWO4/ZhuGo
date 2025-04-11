@@ -63,7 +63,7 @@ analyze_go_string(Board* board, int row, int col) {
     for_neighbor(board, r, c, neighbor_r, neighbor_c) {
       if (
         in_board(board, neighbor_r, neighbor_c)
-        && get_piece(board, neighbor_r, neighbor_c) == chasing_player 
+        && get_piece(board, neighbor_r, neighbor_c) == chasing_player
         && get_qi(board, neighbor_r, neighbor_c) <= 1) {
         return { false, 0, {} };
       }
@@ -91,7 +91,7 @@ static std::set<Point> get_all_qi_point_of_gostring(
   return qi_pos;
 }
 
-/* refactor 
+/* refactor
  *    extract simple functions, it's too complicated
  *    as one single function now
  */
@@ -123,7 +123,7 @@ analyze_go_string_agent(Board* board, int row, int col) {
   for_neighbor(board, escape_r, escape_c, neighbor_r, neighbor_c) {
     if (
       in_board(board, neighbor_r, neighbor_c)
-      && get_piece(board, neighbor_r, neighbor_c) == escaping_player 
+      && get_piece(board, neighbor_r, neighbor_c) == escaping_player
       && original_gostring.count({ neighbor_r, neighbor_c }) == 0
     ) {
       is_escape_connecting_new_gostring = true;
@@ -135,7 +135,7 @@ analyze_go_string_agent(Board* board, int row, int col) {
    * causing the logic to crash; add the volatile modifier to prevent the ordering
    * Fuck you, msvc. Go eating shit.
    */
-  volatile Board* __board = board; 
+  volatile Board* __board = board;
   place_piece((Board*) __board, escape_r, escape_c, escaping_player);
 
   unsigned remain_qi = get_qi(board, escape_r, escape_c);
