@@ -62,7 +62,7 @@ def load_game(file: BufferedReader, game_offset: int, endian: str) -> Iterator[t
 
     value_target = -value_target
 
-def load_file(file: BufferedReader) -> list[tuple]:
+def load_file(file: BufferedReader) -> Iterator[tuple]:
   magic_number, = unpack('>I', file.read(4))
 
   if magic_number == 0x3456789A:
@@ -78,9 +78,10 @@ def load_file(file: BufferedReader) -> list[tuple]:
 
   game_offsets = unpack(f'{endian}{game_count}Q', file.read(8 * game_count))
 
-  return [result for game_offset in game_offsets for result in load_game(file, game_offset, endian)]
+  for game_offset in game_offsets:
+    yield from load_game(file, game_offset, endian)
 
-def load(path: str) -> list[tuple[GameState, torch.Tensor, torch.Tensor]]:
+def load(path: str) -> Iterator[tuple[GameState, torch.Tensor, torch.Tensor]]:
   '''return list(game_state, policy_target(N, M), value_target(1))'''
   with open(path, 'rb') as f:
-    return load_file(f)
+    yield from load_file(f)
