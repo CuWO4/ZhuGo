@@ -18,7 +18,7 @@ class Record:
     input: torch.Tensor, policy_target: torch.Tensor, value_target: torch.Tensor,
     loss: float, decay_coeff: float = 1.0
   ):
-    '''input(1, C, N, M), policy_target(1, N, M), value_target(1, 1)'''
+    '''input(1, C, N, M), policy_target(1, N * M + 1), value_target(1, 1)'''
     self.input: torch.Tensor = input.cpu().detach()
     self.policy_target: torch.Tensor = policy_target.cpu().detach()
     self.value_target: torch.Tensor = value_target.cpu().detach()
