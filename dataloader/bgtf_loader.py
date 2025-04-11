@@ -18,7 +18,7 @@ def load_turns(
   turn_count: int,
   endian: str,
 ) -> Iterator[tuple[Move | None, tuple[float]]]:
-  '''return last move, target policy distribution (row first encoding, 361 + 1)'''
+  '''return last move, target policy distribution (row major encoding, 361 + 1)'''
   for _ in range(turn_count):
     data = unpack(f'{endian}2H362f', file.read(2 * 2 + 362 * 4))
 
@@ -63,9 +63,8 @@ def load_game(file: BufferedReader, game_offset: int, endian: str) -> Iterator[t
 
     if move is not None:
       game = game.apply_move(move)
-      
-    policy_tensor = torch.tensor(policy_target[:361], device = 'cpu').view(19, 19)
-    policy_tensor /= torch.sum(policy_tensor) + 1e-8
+
+    policy_tensor = torch.tensor(policy_target, device = 'cpu')
     value_tensor = torch.tensor([value_target], device = 'cpu')
 
     yield game, policy_tensor, value_tensor
@@ -92,11 +91,12 @@ def load_reader(file: BufferedReader) -> Iterator[tuple]:
     yield from load_game(file, game_offset, endian)
 
 def load_file(path: str) -> Iterator[tuple[GameState, torch.Tensor, torch.Tensor]]:
-  '''return list(game_state, policy_target(N, M), value_target(1))'''
+  '''return list(game_state, policy_target(N * M + 1), value_target(1))'''
   with open(path, 'rb') as f:
     yield from load_reader(f)
 
 def load_bytes(data: bytes) -> Iterator[tuple[GameState, torch.Tensor, torch.Tensor]]:
+  '''return list(game_state, policy_target(N * M + 1), value_target(1))'''
   bytes_io = io.BytesIO(data)
   buffered_reader = io.BufferedReader(bytes_io)
   yield from load_reader(buffered_reader)
