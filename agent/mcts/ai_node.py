@@ -45,14 +45,9 @@ class AINode(Node):
       policy_logits = policy_logits.detach()
       value_logits = value_logits.detach()
 
-    policy_probs = torch.cat([
-      torch.flatten(policy_logits.detach()),
-      torch.tensor([-1e5], device=policy_logits.device, dtype=policy_logits.dtype) # pass turn: never
-    ])
-    policy_probs += (torch.tensor(self.legal_mask, device=policy_logits.device) - 1) * 1e5
-    policy_probs = torch.softmax(policy_probs, dim=-1)
+    policy_logits += (torch.tensor(self.legal_mask, device=policy_logits.device) - 1) * 1e5
 
-    self.policy = policy_probs.cpu().numpy()
+    self.policy = torch.softmax(policy_logits, dim=-1).cpu().numpy()
     self.value = torch.tanh(value_logits.detach().cpu())[0, 0].item()
 
     self.is_leaf = True
