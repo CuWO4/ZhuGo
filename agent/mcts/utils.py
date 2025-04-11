@@ -12,11 +12,11 @@ __all__ = [
 
 def exploring_move_indexes(ucb: np.ndarray[float], size: int) -> list[int]:
   max_ucb_indexes = np.argwhere(ucb == np.max(ucb)).flatten()
-  
+
   if len(max_ucb_indexes) == 0:
     print(f'{ucb=}')
     assert len(max_ucb_indexes)
-    
+
   move_indexes = np.random.choice(max_ucb_indexes, size=size, replace=True)
   return move_indexes
 

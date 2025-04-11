@@ -1,7 +1,7 @@
 #ifndef ENCODER_H_
 #define ENCODER_H_
 
-constexpr int channels = 25;
+constexpr int channels = 26;
 constexpr int max_size = 19;
 
 constexpr int ladder_threshold = 4;

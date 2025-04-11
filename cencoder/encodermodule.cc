@@ -25,7 +25,7 @@ static PyObject* py_encode(PyObject* self, PyObject* args) {
   }
 
   constexpr int num_dims = 3;
-  npy_intp dims[] = { channels, board->rows, board->cols }; 
+  npy_intp dims[] = { channels, board->rows, board->cols };
 
   float* data = encode(board, last_board, player);
 
