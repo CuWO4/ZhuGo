@@ -248,15 +248,16 @@ class ZhuGoSharedResNet(nn.Module):
     return self.model(x)
 
 class ZhuGoPolicyHead(nn.Module):
-  '''(B, C, N, M) -> (B, N, M)'''
+  '''(B, C, N, M) -> (B, N * M + 1)'''
   def __init__(
     self,
+    board_size: tuple[int, int],
     bottleneck_channels: int,
     policy_residual_depth: int
   ):
     super(ZhuGoPolicyHead, self).__init__()
 
-    self.model = nn.Sequential(
+    self.shared = nn.Sequential(
       *[
         ZhuGoResidualConvBlock(bottleneck_channels)
         for _ in range(policy_residual_depth)
@@ -264,18 +265,35 @@ class ZhuGoPolicyHead(nn.Module):
       nn.BatchNorm2d(bottleneck_channels),
       CBAMBlock(bottleneck_channels, reduction = 8),
       nn.LeakyReLU(),
+    )
+
+    self.move_model = nn.Sequential(
       nn.Conv2d(bottleneck_channels, bottleneck_channels // 2, kernel_size=1, bias=False),
       nn.BatchNorm2d(bottleneck_channels // 2),
       nn.LeakyReLU(),
-      nn.Conv2d(bottleneck_channels // 2, 1, kernel_size=1)
+      nn.Conv2d(bottleneck_channels // 2, 1, kernel_size=1),
+      nn.Flatten(),
     )
 
-    kaiming_init_sequential(self.model)
-    nn.init.xavier_normal_(self.model[-1].weight)
-    nn.init.zeros_(self.model[-1].bias)
+    self.pass_model = nn.Sequential(
+      nn.Conv2d(bottleneck_channels, 1, kernel_size=1, bias=False),
+      nn.BatchNorm2d(1),
+      nn.LeakyReLU(),
+      nn.Flatten(),
+      nn.Linear(board_size[0] * board_size[1], board_size[0] * board_size[1] // 4),
+      nn.LeakyReLU(),
+      nn.Linear(board_size[0] * board_size[1] // 4, 1),
+    )
+
+    kaiming_init_sequential(self.shared)
+    kaiming_init_sequential(self.move_model)
+    kaiming_init_sequential(self.pass_model)
+    nn.init.xavier_normal_(self.move_model[-2].weight)
+    nn.init.xavier_normal_(self.pass_model[-1].weight)
 
   def forward(self, x):
-    return self.model(x)
+    out = self.shared(x)
+    return torch.cat((self.move_model(out), self.pass_model(out)), dim = 1)
 
 class ZhuGoValueHead(nn.Module):
   '''(B, C, N, M) -> (B, 1)'''
@@ -336,7 +354,11 @@ class ZhuGoValueHead(nn.Module):
 
 
 class ZhuGo(nn.Module):
-  '''(B, C, N, M) -> [(B, N, M), (B, 1)]'''
+  '''
+  (B, C, N, M) -> (B, N * M + 1), (B, 1)
+  first is policy output logits, unnormalized, 361 (row-major moves) + 1 (pass turn).
+  second is value output logits, inactivated.
+  '''
   def __init__(
     self, *,
     board_size: tuple[int, int],
@@ -352,12 +374,12 @@ class ZhuGo(nn.Module):
 
     self.shared = ZhuGoSharedResNet(input_channels, residual_channels, residual_depths, bottleneck_channels)
 
-    self.policy = ZhuGoPolicyHead(bottleneck_channels, policy_residual_depth)
+    self.policy = ZhuGoPolicyHead(board_size, bottleneck_channels, policy_residual_depth)
 
     self.value = ZhuGoValueHead(board_size, bottleneck_channels, value_residual_depth, value_middle_width)
 
   def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     shared = self.shared(x)
-    policy = self.policy(shared).squeeze(1) # remove channel dimension
+    policy = self.policy(shared)
     value = self.value(shared)
     return policy, value

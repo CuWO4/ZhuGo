@@ -1,6 +1,6 @@
 {
   "board_size": [19, 19],
-  "input_channels": 25,
+  "input_channels": 26,
   "residual_channels": [256, 196],
   "residual_depths": [10, 8],
   "bottleneck_channels": 128,

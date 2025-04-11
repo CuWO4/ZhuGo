@@ -75,8 +75,11 @@ void encode_player(ENCODER_FORMAL_ARGS) {
   for (int k = 0; k < plain_size; k++) {
     data[offset + k] = fill;
   }
+  for (int k = plain_size; k < 2 * plain_size; k++) {
+    data[offset + k] = 1.f - fill;
+  }
 
-  offset += plain_size;
+  offset += 2 * plain_size;
 }
 
 void encode_valid_move(ENCODER_FORMAL_ARGS) {
