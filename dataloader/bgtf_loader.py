@@ -3,11 +3,13 @@ from go.gotypes import Point
 
 from struct import unpack
 import torch
+import io
 from io import BufferedReader
 from typing import Iterator
 
 __all__ = [
-  'load',
+  'load_file',
+  'load_bytes',
 ]
 
 
@@ -70,7 +72,7 @@ def load_game(file: BufferedReader, game_offset: int, endian: str) -> Iterator[t
 
     value_target = -value_target
 
-def load_file(file: BufferedReader) -> Iterator[tuple]:
+def load_reader(file: BufferedReader) -> Iterator[tuple]:
   magic_number, = unpack('>I', file.read(4))
 
   if magic_number == 0x3456789A:
@@ -89,7 +91,12 @@ def load_file(file: BufferedReader) -> Iterator[tuple]:
   for game_offset in game_offsets:
     yield from load_game(file, game_offset, endian)
 
-def load(path: str) -> Iterator[tuple[GameState, torch.Tensor, torch.Tensor]]:
+def load_file(path: str) -> Iterator[tuple[GameState, torch.Tensor, torch.Tensor]]:
   '''return list(game_state, policy_target(N, M), value_target(1))'''
   with open(path, 'rb') as f:
-    yield from load_file(f)
+    yield from load_reader(f)
+
+def load_bytes(data: bytes) -> Iterator[tuple[GameState, torch.Tensor, torch.Tensor]]:
+  bytes_io = io.BytesIO(data)
+  buffered_reader = io.BufferedReader(bytes_io)
+  yield from load_reader(buffered_reader)
