@@ -198,7 +198,10 @@ class GameState():
 
   def apply_move(self, move: Move):
     """Return the new GameState after applying the move."""
-    assert not self.is_over()
+    if __debug__:
+      if self.is_over():
+        print(f'runtime warning: play on a overed game')
+        print(self.board)
 
     if move.is_undo:
       assert self.is_privileged_mode
