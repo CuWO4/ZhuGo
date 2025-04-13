@@ -193,7 +193,7 @@ void update_qi(Board* board) {
   bool is_piece_set_mem[MAX_N * MAX_N];
   bool is_piece_visited_mem[MAX_N * MAX_N];
   bool is_qi_visited_mem[MAX_N * MAX_N];
-  
+
   bool* is_piece_set[MAX_N];
   bool* is_piece_visited[MAX_N];
   bool* is_qi_visited[MAX_N];

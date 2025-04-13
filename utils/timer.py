@@ -24,11 +24,11 @@ def timer(time_precision: int = 2) -> Callable:
       print(f'`{func.__name__}` takes {ms_cost}ms')
 
       return result
-    
+
     return decorated_func
 
   return decorator
-  
+
 def profile(func: Callable) -> Callable:
   def decorated_func(*args, **kwargs):
     profiler = cProfile.Profile()
