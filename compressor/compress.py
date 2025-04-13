@@ -25,6 +25,10 @@ if __name__ == '__main__':
   cctx = zstd.ZstdCompressor(level = args.level)
 
   executable = os.path.join(script_dir, os.path.join(DEBUGDIR, TARGET))
+
+  total = sum(len(files) for _, _, files in os.walk(args.work_directory))
+  handled = 0
+
   for dir, _, files in os.walk(args.work_directory):
     for file in files:
       leela_path = os.path.join(current_dir, dir, file)
@@ -34,4 +38,6 @@ if __name__ == '__main__':
       with open(bgtf_path, 'rb') as f_in, open(bgtf_zstd_path, 'wb') as f_out:
         f_out.write(cctx.compress(f_in.read()))
       os.remove(bgtf_path)
-      print(f'compressed {leela_path} -> {bgtf_zstd_path}')
+
+      handled += 1
+      print(f'{f"compressed {leela_path} -> {bgtf_zstd_path}":<160}{f"{handled}/{total}":>30}')
