@@ -34,7 +34,6 @@ def compress_task(
       print(f'{f"compressed {leela_path} -> {bgtf_zstd_path}":<160}{f"{handled.value}/{total}":>30}')
 
 def main():
-  current_dir = os.getcwd()
   script_dir = os.path.dirname(os.path.abspath(__file__))
 
   subprocess.run(['make', '-C', script_dir, f'DEBUGDIR={DEBUGDIR}', f'TARGET={TARGET}'])
@@ -57,9 +56,9 @@ def main():
   all_files = os.listdir(args.work_directory)
 
   total = len(all_files)
-
-  work_dir = os.path.join(current_dir, args.work_directory)
-  output_dir = os.path.join(current_dir, args.output_directory)
+  
+  work_dir = os.path.abspath(args.work_directory)
+  output_dir = os.path.abspath(args.output_directory)
 
   file_n_each_task = (total + thread_n - 1) // thread_n
 
