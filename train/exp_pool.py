@@ -25,6 +25,12 @@ class Record:
     self.loss: float = loss
     self.decay_coeff: float = decay_coeff
 
+  def share_memory_(self) -> 'Record':
+    self.input.share_memory_()
+    self.policy_target.share_memory_()
+    self.value_target.share_memory_()
+    return self
+
   @property
   def priority(self):
     return self.loss * self.decay_coeff
