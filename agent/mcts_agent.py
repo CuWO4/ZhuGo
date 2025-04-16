@@ -35,7 +35,7 @@ class MCTSAgent(Agent):
     self.root: Node | None = None
 
     self.data_connection, data_connection = mp.Pipe()
-    self.monitor = mp.Process(target = Monitor, args = (data_connection,))
+    self.monitor = mp.Process(target = Monitor, args = (data_connection,), daemon = True)
     self.monitor.start()
 
   def select_move(self, game_state: GameState) -> Move:
