@@ -1,5 +1,6 @@
 from dataloader.bgtf_zstd_loader import load_file
 from .exp_pool import Record
+from ai.encoder.base import Encoder
 from ai.encoder.zhugo_encoder import ZhuGoEncoder
 from ai.utils.rotate import get_d8_sym_tensors
 
@@ -52,70 +53,41 @@ def busy_wait(end_cond: Callable, interval_ms: int):
 # torch.utils.data.IterableDataset can also implement the function,
 # unnecessary dependencies are imported. a from zero implementation
 # would be more concise.
-class BGTFDataLoader(Iterator):
+class BGTFDataLoader:
   def __init__(
     self,
     root: str, # root directory of data
     batch_size: int,
+    *,
+    prefetch_batch: int = 2,
     debug: bool = False
   ):
     super().__init__()
-
-    min_record_num = 3 * batch_size
-    max_record_num = 10 * batch_size
-
-    self.batch_size = batch_size
     self.debug = debug
-
-    self.cached = mp.Queue(maxsize = max_record_num)
-    self.put_permission = mp.Event()
-    self.put_permission.set()
-    # disable subprocess putting new record when getting next batch,
-    # avoiding racing. slightly improve performance.
-
-    decoder_process = mp.Process(
+    self.cached = mp.Queue()
+    mp.Process(
       target = self.decode_worker,
       args = (
         self.cached,
         root,
-        min_record_num,
-        self.put_permission,
+        batch_size,
+        prefetch_batch,
         debug
       ),
       daemon = True,
-    )
-    decoder_process.start()
+    ).start()
 
   def __iter__(self) -> Iterator:
-    return self
-
-  def __next__(self) -> list[Record]:
-    busy_wait(lambda: self.cached.qsize() >= self.batch_size, 1)
-    self.put_permission.clear()
-    records = [self.cached.get(block = True) for _ in range(self.batch_size)]
-    self.put_permission.set()
-    return records
+    while True:
+      yield self.cached.get(block = True)
 
   @staticmethod
-  def decode_worker(
-    result_queue: mp.Queue,
-    root: str,
-    min_record_num: int,
-    put_permission: mp.Event,
-    debug: bool,
-  ) -> None:
+  def record_stream(root: str, encoder: Encoder, debug: bool) -> Iterator[Record]:
     files = [path for f in os.listdir(root) if os.path.isfile(path := os.path.join(root, f))]
-    random.seed()
     random.shuffle(files)
-
-    encoder = ZhuGoEncoder(device = 'cpu')
-
     for file in cycle(files):
-      busy_wait(lambda: result_queue.qsize() < min_record_num, 50)
-
       if debug:
-        print(f'<{__file__}> loading {file}')
-
+        print(f'<record_stream> loading {file}')
       try:
         records = [
           record
@@ -123,8 +95,24 @@ class BGTFDataLoader(Iterator):
           for record in get_d8_sym_records(encoder.encode(game), policy, value)
         ]
         random.shuffle(records)
-        for record in records:
-          put_permission.wait()
-          result_queue.put(record)
+        yield from records
       except Exception as e:
-        print(f'<{__file__}> error processing `{file}`: {e}')
+        print(f'<record_stream> error `{e}` happened when handling `{file}`')
+
+  @staticmethod
+  def decode_worker(
+    result_queue: mp.Queue,
+    root: str,
+    batch_size: int,
+    prefetch_batch: int,
+    debug: bool,
+  ) -> None:
+    random.seed()
+    encoder = ZhuGoEncoder(device = 'cpu')
+    batch = []
+    for record in BGTFDataLoader.record_stream(root, encoder, debug):
+      batch.append(record.share_memory_())
+      if len(batch) >= batch_size:
+        busy_wait(lambda: result_queue.qsize() < prefetch_batch, 50)
+        result_queue.put(batch)
+        batch = []
