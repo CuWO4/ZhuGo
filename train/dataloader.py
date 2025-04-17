@@ -24,8 +24,8 @@ def get_d8_sym_records(
   '''input(C, 19, 19), policy_target(19 * 19 + 1), value_target(1)'''
   assert (
     input.shape == (input.shape[0], 19, 19)
-    and policy_target.shape == (362)
-    and value_target.shape == (1)
+    and policy_target.shape == (362,)
+    and value_target.shape == (1,)
   ), (
     f"<{get_d8_sym_records.__name__}>: invalid tensor shape "
     f"{input.shape=} {policy_target.shape=} {value_target.shape=}"
@@ -123,9 +123,8 @@ class BGTFDataLoader(Iterator):
           for record in get_d8_sym_records(encoder.encode(game), policy, value)
         ]
         random.shuffle(records)
+        for record in records:
+          put_permission.wait()
+          result_queue.put(record)
       except Exception as e:
         print(f'<{__file__}> error processing `{file}`: {e}')
-
-      for record in records:
-        put_permission.wait()
-        result_queue.put(record)
