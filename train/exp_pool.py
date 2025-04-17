@@ -55,6 +55,8 @@ class ExpPool:
     self.decay_ratio: float = decay_ratio
     self.sorted_records: SortedList[Record] = SortedList(key=lambda record: record.priority)
 
+    self._decay_mark = 0
+
   def insert_record(self, records: list[Record]):
     self.sorted_records.update(records)
 
@@ -88,7 +90,13 @@ class ExpPool:
 
     losses = train_f(inputs, policy_targets, value_targets, original_losses)
 
-    new_records = Record.from_tensors(inputs, policy_targets, value_targets, losses, decay_coeffs)
+    new_records = Record.from_tensors(
+      inputs.cpu(), 
+      policy_targets.cpu(), 
+      value_targets.cpu(), 
+      losses.cpu(), 
+      decay_coeffs
+    )
     self._delete_high_priority_records(batch_size)
     self._priority_decay()
     self.insert_record(new_records)
@@ -166,8 +174,16 @@ class ExpPool:
     del self.sorted_records[-batch_size:]
 
   def _priority_decay(self):
+    # to reduce decay frequency. decay is O(n), costs quite much
+    # time when pool is big.
+    DECAY_INTERVAL = 10
+    self._decay_mark = (self._decay_mark + 1) % DECAY_INTERVAL
+    if self._decay_mark != 0:
+      return
+    
+    decay_ratio = self.decay_ratio ** DECAY_INTERVAL
     for record in self.sorted_records:
-      record.decay_coeff *= self.decay_ratio
+      record.decay_coeff *= decay_ratio
     # no need to readjust since the order relation remains
 
   @property
