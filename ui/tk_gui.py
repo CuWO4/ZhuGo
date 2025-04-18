@@ -21,13 +21,14 @@ class TkGUI(UI):
     self.mcts_connection, renderer_mcts_connection = mp.Pipe()
 
     self.renderer_process = mp.Process(
-      target=TkRenderer,
-      args=(
+      target = TkRenderer,
+      args = (
         renderer_game_state_connection,
         renderer_move_connection,
         renderer_mcts_connection,
         row_n, col_n
-      )
+      ),
+      daemon = True
     )
     self.renderer_process.start()
 
