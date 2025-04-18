@@ -1,7 +1,6 @@
 from dataloader.bgtf_zstd_loader import load_file
 from .exp_pool import Record
 from ai.encoder.base import Encoder
-from ai.encoder.zhugo_encoder import ZhuGoEncoder
 from ai.utils.rotate import get_d8_sym_tensors
 
 import torch
@@ -58,6 +57,7 @@ class BGTFDataLoader:
     self,
     root: str, # root directory of data
     batch_size: int,
+    encoder: Encoder,
     *,
     prefetch_batch: int = 2,
     debug: bool = False
@@ -67,13 +67,14 @@ class BGTFDataLoader:
     self.cached = mp.Queue()
     mp.Process(
       target = self.decode_worker,
-      args = (
-        self.cached,
-        root,
-        batch_size,
-        prefetch_batch,
-        debug
-      ),
+      kwargs = {
+        "result_queue": self.cached,
+        "root": root,
+        "batch_size": batch_size,
+        "encoder": encoder,
+        "prefetch_batch": prefetch_batch,
+        "debug": debug,
+      },
       daemon = True,
     ).start()
 
@@ -104,11 +105,11 @@ class BGTFDataLoader:
     result_queue: mp.Queue,
     root: str,
     batch_size: int,
+    encoder: Encoder,
     prefetch_batch: int,
     debug: bool,
   ) -> None:
     random.seed()
-    encoder = ZhuGoEncoder(device = 'cpu')
     batch = []
     for record in BGTFDataLoader.record_stream(root, encoder, debug):
       batch.append(record.share_memory_())
