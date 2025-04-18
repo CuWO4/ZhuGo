@@ -3,7 +3,7 @@ from .mcts_agent import MCTSAgent
 
 from ai.zhugo import ZhuGo
 from ai.encoder.zhugo_encoder import ZhuGoEncoder
-from ai.manager import load, load_deployed_model
+from ai.manager import ModelManager
 from .mcts.ai_node import AINode
 from go.goboard import GameState
 from utils.mcts_data import MCTSData
@@ -27,11 +27,12 @@ class AIAgent(MCTSAgent):
     self.encoder = ZhuGoEncoder()
 
     if isinstance(model, str):
+      manager = ModelManager(model, ZhuGo)
       try: # try to load deployed model
         warmup_dumb_input = self.encoder.encode(GameState.new_game()).unsqueeze(0)
-        self.model = load_deployed_model(model, warmup_dumb_input = warmup_dumb_input)
+        self.model = manager.load_deployed_model(warmup_dumb_input = warmup_dumb_input)
       except Exception: # failed, load native pytorch model instead
-        self.model = load(ZhuGo, model)
+        self.model = manager.load_model()
       self.model.eval()
     else:
       assert isinstance(self.model, ZhuGo)
