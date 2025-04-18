@@ -100,7 +100,7 @@ class ModelManager:
     checkpoint_path = os.path.join(
       self.root,
       self.CHECKPOINTS_DIR,
-      datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
+      datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
     )
     torch.save(model.state_dict(), checkpoint_path)
 
