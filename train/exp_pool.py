@@ -49,6 +49,20 @@ class Record:
       in zip(inputs, policy_targets, value_targets, losses, decay_coeffs)
     ]
 
+  @staticmethod
+  def stack(
+    records: list['Record'], 
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+  ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, list[float], list[float]]:
+    '''return inputs(B, C, N, M), policies(B, N, M), values(B, 1), ori_losses(B), decays(B)'''
+    return (
+      torch.cat([record.input for record in records], dim = 0).to(device = device),
+      torch.cat([record.policy_target for record in records], dim = 0).to(device = device),
+      torch.cat([record.value_target for record in records], dim = 0).to(device = device),
+      [record.loss for record in records],
+      [record.decay_coeff for record in records],
+    )
+
 class ExpPool:
   def __init__(self, capacity: int, decay_ratio: float = 0.99):
     self.capacity = capacity
@@ -156,19 +170,13 @@ class ExpPool:
   def _get_batch(self, batch_size: int, *, device = 'cuda' if torch.cuda.is_available() else 'cpu') \
     -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, list[float], list[float]]:
     '''
-    return inputs(B, N, M), policy_targets(B, N, M), value_targets(B, 1), original_average_loss, decay_coeffs
+    return inputs(B, C, N, M), policy_targets(B, N, M), value_targets(B, 1), original_average_loss, decay_coeffs
 
     remove sampled records. after sampling and training, insert them back by users explicitly
     to update losses
     '''
     top_records = self.sorted_records[-batch_size:]
-    inputs = torch.cat([record.input for record in top_records], dim=0).to(device=device)
-    policy_targets = torch.cat([record.policy_target for record in top_records], dim=0).to(device=device)
-    value_targets = torch.cat([record.value_target for record in top_records], dim=0).to(device=device)
-    original_average_loss = [record.loss for record in top_records]
-    decay_coeffs = [record.decay_coeff for record in top_records]
-
-    return inputs, policy_targets, value_targets, original_average_loss, decay_coeffs
+    return Record.stack(top_records, device = device)
 
   def _delete_high_priority_records(self, batch_size: int):
     del self.sorted_records[-batch_size:]
