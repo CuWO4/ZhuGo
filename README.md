@@ -45,4 +45,16 @@ python create.py -c CONF -p PATH
 
 ## Train
 
-TODO
+执行
+
+```shell
+python -O ./train.script.py -m [MODEL ROOT] -d [DATASET ROOT]
+```
+
+以训练, 使用
+
+```shell
+python ./train.script.py --help
+```
+
+以查看更多参数设置.
