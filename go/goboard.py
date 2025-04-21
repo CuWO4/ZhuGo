@@ -22,7 +22,7 @@ class Board():
       self.c_board: cBoard = cBoard(num_rows, num_cols)
     else:
       self.c_board = c_board
-      
+
   @staticmethod
   def c_player_to_py_player(c_player: int) -> Player:
     if c_player == 0:
@@ -33,7 +33,7 @@ class Board():
       return Player.white
     else:
       raise ValueError(f'unknown c player {c_player}')
-    
+
   @staticmethod
   def py_player_to_c_player(py_player: Player) -> int:
     if py_player is None:
@@ -49,18 +49,18 @@ class Board():
   def size(self) -> tuple[int, int]:
     '''return row_n, col_n'''
     return self.num_rows, self.num_cols
-  
+
   def get(self, point: Point) -> Player | None:
     c_player = self.c_board.get(point.row - 1, point.col - 1)
     return self.c_player_to_py_player(c_player)
-  
+
   def qi(self, point: Point) -> int:
     return self.c_board.qi(point.row - 1, point.col - 1)
-  
+
   def get_random_qi_pos(self, point: Point) -> Point:
     c_row, c_col = self.c_board.get_random_qi_pos(point.row - 1, point.col - 1)
     return Point(row = c_row + 1, col = c_col + 1)
-  
+
   def is_valid_move(self, point: Point, player: Player) -> bool:
     c_player = self.py_player_to_c_player(player)
     return self.c_board.is_valid_move(c_player, point.row - 1, point.col - 1)
@@ -70,8 +70,10 @@ class Board():
     self.c_board.place_stone(c_player, point.row - 1, point.col - 1)
 
   def in_board(self, point: Point) -> bool:
-    return 1 <= point.row <= self.num_rows and \
-      1 <= point.col <= self.num_cols
+    return (
+      1 <= point.row <= self.num_rows
+      and 1 <= point.col <= self.num_cols
+    )
 
   def __str__(self) -> str:
     STONE_TO_CHAR = {
@@ -91,10 +93,12 @@ class Board():
     return str
 
   def __eq__(self, other):
-    return isinstance(other, Board) \
-      and self.num_rows == other.num_rows \
-      and self.num_cols == other.num_cols \
+    return (
+      isinstance(other, Board)
+      and self.num_rows == other.num_rows
+      and self.num_cols == other.num_cols
       and self.hash() == other.hash()
+    )
 
   def __deepcopy__(self, memo={}):
     return Board(self.num_rows, self.num_cols, copy.deepcopy(self.c_board))
@@ -107,14 +111,14 @@ class Move():
   """Any action a player can play on a turn.
 
   Exactly one of is_play, is_pass, is_resign will be set.
-  
+
   Undo will only be permitted when the game applied with undo move is in privileged mode.
   """
   def __init__(
-    self, 
-    point: Point = None, 
-    is_pass: bool = False, 
-    is_resign: bool = False, 
+    self,
+    point: Point = None,
+    is_pass: bool = False,
+    is_resign: bool = False,
     is_undo: bool = False
   ):
     assert (point is not None) + is_pass + is_resign + is_undo == 1
@@ -180,9 +184,10 @@ class Move():
 
 class GameState():
   def __init__(self, board: Board, next_player: Player, previous_state, last_move: Move, komi: float,
-               *, is_privileged_mode: bool = False):
+               *, is_privileged_mode: bool = False, turn: int = 1):
     '''only privileged mode is on, undo move is allowed
     '''
+    self.turn = turn
     self.board: Board = board
     self.next_player: Player = next_player
     self.previous_state: GameState = previous_state
@@ -190,41 +195,38 @@ class GameState():
     self.last_move: Move = last_move
 
     self.is_privileged_mode: bool = is_privileged_mode
-    
-  # ignore previous states which is only useful for undo move
-  def __getstate__(self) -> dict:
-    state = self.__dict__.copy()
-    if state['previous_state'] is not None:
-      state['previous_state'].previous_state = None
-    return state
-    
+
   def apply_move(self, move: Move):
     """Return the new GameState after applying the move."""
-    assert not self.is_over()
-    
+    if __debug__:
+      if self.is_over():
+        print(f'runtime warning: play on a overed game')
+        print(self.board)
+
     if move.is_undo:
       assert self.is_privileged_mode
       if self.previous_state is not None:
-        return self.previous_state 
+        return self.previous_state
       else:
         return self
-    
+
     next_board = copy.deepcopy(self.board)
     if move.is_play:
       next_board.place_stone(self.next_player, move.point)
-      
+
     return GameState(
-      next_board, 
-      self.next_player.other, 
-      self, 
-      move, 
-      self.komi, 
-      is_privileged_mode = self.is_privileged_mode
+      next_board,
+      self.next_player.other,
+      self,
+      move,
+      self.komi,
+      is_privileged_mode = self.is_privileged_mode,
+      turn = self.turn + 1
     )
 
   @staticmethod
   def new_game(board_size: tuple[int] = (19, 19), komi: float = 7.5, *, is_privileged_mode: bool = False):
-    return GameState(Board(*board_size), Player.black, None, None, komi, is_privileged_mode = is_privileged_mode)
+    return GameState(Board(*board_size), Player.black, None, None, komi, is_privileged_mode = is_privileged_mode, turn = 1)
 
   def does_move_violate_ko(self, player: Player, move: Move) -> bool:
     if not move.is_play:
@@ -244,15 +246,17 @@ class GameState():
       return True
     if move.is_undo:
       return self.is_privileged_mode
-    return self.board.get(move.point) is None \
-      and self.board.is_valid_move(move.point, self.next_player) \
+    return (
+      self.board.get(move.point) is None
+      and self.board.is_valid_move(move.point, self.next_player)
       and not self.does_move_violate_ko(self.next_player, move)
+    )
 
   def is_over(self) -> bool:
-    if self.last_move is None:
+    if self.last_move is None or self.previous_state is None:
       return False
     if self.last_move.is_resign:
-      return True 
+      return True
     second_last_move = self.previous_state.last_move
     if second_last_move is None:
       return False
@@ -271,7 +275,7 @@ class GameState():
     moves.append(Move.resign())
 
     return moves
-  
+
   def game_result(self) -> scoring.GameResult:
     return scoring.compute_game_result(self)
 
@@ -281,11 +285,11 @@ class GameState():
     if self.last_move.is_resign:
       return self.next_player
     return self.game_result().winner
-  
+
   def is_ancestor_of(self, other, max_n: int) -> bool:
     if not isinstance(other, GameState):
       return False
-    
+
     state: GameState = other
     for _ in range(max_n + 1):
       if state is None:
@@ -295,10 +299,10 @@ class GameState():
       state = state.previous_state
 
     return False
-  
+
   def __sub__(self, other) -> list[Move]:
     assert isinstance(other, GameState)
-    
+
     move_list = []
     state = self
     while state != other and state.board != other.board:

@@ -1,5 +1,6 @@
 from setuptools import setup, Extension
 import os
+import sys
 
 def find_c_files(directory: str) -> list[str]:
   c_files = []
@@ -19,7 +20,7 @@ numpy_dir = os.path.dirname(numpy.__file__)
 cboard_extension = Extension(
   'encodermodule',
   sources=c_files,
-  extra_compile_args=['-O2', '-DNDEBUG', '/std:c++17'],
+  extra_compile_args=['-O2', '-DNDEBUG', '-std=c++17' if sys.platform == 'linux' else '/std:c++17'],
   include_dirs=[
     script_dir + '/../cboard/',
     numpy_dir + '/core/include'

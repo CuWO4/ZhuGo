@@ -29,17 +29,18 @@ def idx_to_move(idx: int, size: tuple[int, int]) -> Move:
     return Move.pass_turn()
   else:
     return Move.play(Point(row = idx // col_n + 1, col = idx % col_n + 1))
-  
+
 
 def test() -> None:
   '''
-  >>> move_to_idx(idx_to_move(0, (19, 19)), (19, 19)) == 0 \
-  and move_to_idx(idx_to_move(360, (19, 19)), (19, 19)) == 360 \
-  and move_to_idx(idx_to_move(361, (19, 19)), (19, 19)) == 361 \
-  and move_to_idx(idx_to_move(362, (19, 19)), (19, 19)) == 362 \
-  and move_to_idx(idx_to_move(265, (19, 19)), (19, 19)) == 265 \
-  and move_to_idx(idx_to_move(265, (19, 17)), (19, 17)) == 265 \
-  and move_to_idx(idx_to_move(265, (17, 19)), (17, 19)) == 265
+  >>> (
+    move_to_idx(idx_to_move(0, (19, 19)), (19, 19)) == 0
+    and move_to_idx(idx_to_move(360, (19, 19)), (19, 19)) == 360
+    and move_to_idx(idx_to_move(361, (19, 19)), (19, 19)) == 361
+    and move_to_idx(idx_to_move(362, (19, 19)), (19, 19)) == 362
+    and move_to_idx(idx_to_move(265, (19, 19)), (19, 19)) == 265
+    and move_to_idx(idx_to_move(265, (19, 17)), (19, 17)) == 265
+    and move_to_idx(idx_to_move(265, (17, 19)), (17, 19)) == 265
+  )
   True
   '''
-  
