@@ -31,26 +31,21 @@ class MCTSAgent(Agent):
     self.node_settings: dict = node_settings
 
     self.pool = mp.Pool(mp.cpu_count())
-    
+
     self.root: Node | None = None
-    
+
     self.data_connection, data_connection = mp.Pipe()
-    self.monitor = mp.Process(target = Monitor, args = (data_connection,))
+    self.monitor = mp.Process(target = Monitor, args = (data_connection,), daemon = True)
     self.monitor.start()
 
   def select_move(self, game_state: GameState) -> Move:
     turn_start_timestamp = time.time()
 
-    # to implement continuous searching
-    if self.root is None or not self.root.game_state.is_ancestor_of(game_state, 2):
-      self.root = self.construct_root(game_state)
-    else:
-      for move in game_state - self.root.game_state:
-        self.root = self.root.switch_branch(move)
+    self.set_root(game_state)
 
     while True:
       self.root.propagate()
-      
+
       if self.ui is not None:
         self.update_ui_mcts()
 
@@ -71,7 +66,7 @@ class MCTSAgent(Agent):
       visited_times_sum,
       time_cost_sec,
     ))
-    
+
   def update_ui_mcts(self):
     assert self.ui is not None
     self.ui.display_mcts(MCTSData(
@@ -84,6 +79,14 @@ class MCTSAgent(Agent):
 
   def construct_root(self, game_state: GameState) -> Node:
     return self.NodeType(game_state=game_state, pool=self.pool, **self.node_settings)
+
+  def set_root(self, game_state):
+    # to implement continuous searching
+    if self.root is None or not self.root.game_state.is_ancestor_of(game_state, 2):
+      self.root = self.construct_root(game_state)
+    else:
+      for move in game_state - self.root.game_state:
+        self.root = self.root.switch_branch(move)
 
   def chosen_move(self) -> Move | None:
     assert self.ui is not None

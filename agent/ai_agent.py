@@ -3,14 +3,13 @@ from .mcts_agent import MCTSAgent
 
 from ai.zhugo import ZhuGo
 from ai.encoder.zhugo_encoder import ZhuGoEncoder
-from ai.manager import load
+from ai.manager import ModelManager
 from .mcts.ai_node import AINode
 from go.goboard import GameState
 from utils.mcts_data import MCTSData
 from .mcts.utils import best_move_idx
 
 import torch
-import time
 
 __all__ = [
   'AIAgent'
@@ -25,17 +24,20 @@ class AIAgent(MCTSAgent):
   ):
     super().__init__(node_type_name='agent.mcts.ai_node.AINode', node_settings=node_settings)
 
+    self.encoder = ZhuGoEncoder()
+
     if isinstance(model, str):
-      self.model, _, _ = load(ZhuGo, model)
+      manager = ModelManager(model, ZhuGo)
+      try: # try to load deployed model
+        warmup_dumb_input = self.encoder.encode(GameState.new_game()).unsqueeze(0)
+        self.model = manager.load_deployed_model(warmup_dumb_input = warmup_dumb_input)
+      except Exception: # failed, load native pytorch model instead
+        self.model = manager.load_model()
+      self.model.eval()
     else:
       assert isinstance(self.model, ZhuGo)
       self.model = model
-    self.encoder = ZhuGoEncoder()
 
-    self.noise_intensity = noise_intensity
-    self.noise = torch.distributions.Dirichlet
-
-  # override
   def update_ui_mcts(self):
     assert self.ui is not None
     self.ui.display_mcts(MCTSData(
@@ -50,6 +52,6 @@ class AIAgent(MCTSAgent):
 
   def construct_root(self, game_state: GameState) -> Node:
     return AINode(
-      self.model, self.encoder, self.noise_intensity, self.noise,
+      self.model, self.encoder,
       game_state=game_state, pool=self.pool, **self.node_settings
     )

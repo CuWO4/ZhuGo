@@ -13,7 +13,7 @@ __all__ = [
 class RandomAgent(Agent):
   def __init__(self):
     super().__init__()
-  
+
   def select_move(self, game_state: goboard.GameState) -> goboard.Move:
 
     # shuffle all moves, try linearly, and return the first valid one
@@ -24,7 +24,9 @@ class RandomAgent(Agent):
     random.shuffle(rand_indexes)
     for rand_idx in rand_indexes:
       rand_move = idx_to_move(rand_idx, game_state.board.size)
-      if game_state.is_valid_move(rand_move) \
-        and not is_point_an_eye(game_state.board, rand_move.point, game_state.next_player):
+      if (
+        game_state.is_valid_move(rand_move)
+        and not is_point_an_eye(game_state.board, rand_move.point, game_state.next_player)
+      ):
         return rand_move
     return goboard.Move.pass_turn()

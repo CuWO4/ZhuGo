@@ -16,7 +16,7 @@ class ArgmaxDecoder(Decoder):
 
   def decoder(self, policy_tensor: torch.Tensor) -> Move:
     policy_tensor = policy_tensor.to(device=self.device)
-    
+
     assert policy_tensor.size() == self.size
 
     row, col = torch.unravel_index(torch.argmax(policy_tensor), policy_tensor.size())
