@@ -233,12 +233,9 @@ class ZhuGoSharedResNet(nn.Module):
 
       *residual_layers,
 
-      # attention
-      nn.BatchNorm2d(last_channel),
-      CBAMBlock(last_channel, reduction = 8),
-      nn.LeakyReLU(),
-
       # bottleneck convolution
+      nn.BatchNorm2d(last_channel),
+      nn.LeakyReLU(),
       nn.Conv2d(last_channel, bottleneck_channels, kernel_size=1, bias=False),
     )
 
