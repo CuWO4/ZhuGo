@@ -17,15 +17,13 @@ TODO
 
 ## Build
 
-形如 `c****` 的目录是 C 扩展, 需要将它们编译并把编译产物手动复制到对应文件夹中.
+在根目录执行
 
 ```shell
-python cboard/setup.py build_ext --inplace
-mv boardmodule.[YOUR_ARCH].pyd cboard/boardmodule.[YOUR_ARCH].pyd
-python cencoder/setup.py build_ext --inplace
-mv encodermodule.[YOUR_ARCH].pyd cencoder/encodermodule.[YOUR_ARCH].pyd
-...
+python setup.py
 ```
+
+以编译 C 扩展.
 
 ## Usage
 
@@ -47,4 +45,16 @@ python create.py -c CONF -p PATH
 
 ## Train
 
-TODO
+执行
+
+```shell
+python -O ./train.script.py -m [MODEL ROOT] -d [DATASET ROOT]
+```
+
+以训练, 使用
+
+```shell
+python ./train.script.py --help
+```
+
+以查看更多参数设置.

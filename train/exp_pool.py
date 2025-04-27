@@ -25,6 +25,12 @@ class Record:
     self.loss: float = loss
     self.decay_coeff: float = decay_coeff
 
+  def share_memory_(self) -> 'Record':
+    self.input.share_memory_()
+    self.policy_target.share_memory_()
+    self.value_target.share_memory_()
+    return self
+
   @property
   def priority(self):
     return self.loss * self.decay_coeff
@@ -43,11 +49,27 @@ class Record:
       in zip(inputs, policy_targets, value_targets, losses, decay_coeffs)
     ]
 
+  @staticmethod
+  def stack(
+    records: list['Record'], 
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+  ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, list[float], list[float]]:
+    '''return inputs(B, C, N, M), policies(B, N, M), values(B, 1), ori_losses(B), decays(B)'''
+    return (
+      torch.cat([record.input for record in records], dim = 0).to(device = device),
+      torch.cat([record.policy_target for record in records], dim = 0).to(device = device),
+      torch.cat([record.value_target for record in records], dim = 0).to(device = device),
+      [record.loss for record in records],
+      [record.decay_coeff for record in records],
+    )
+
 class ExpPool:
   def __init__(self, capacity: int, decay_ratio: float = 0.99):
     self.capacity = capacity
     self.decay_ratio: float = decay_ratio
     self.sorted_records: SortedList[Record] = SortedList(key=lambda record: record.priority)
+
+    self._decay_mark = 0
 
   def insert_record(self, records: list[Record]):
     self.sorted_records.update(records)
@@ -82,7 +104,13 @@ class ExpPool:
 
     losses = train_f(inputs, policy_targets, value_targets, original_losses)
 
-    new_records = Record.from_tensors(inputs, policy_targets, value_targets, losses, decay_coeffs)
+    new_records = Record.from_tensors(
+      inputs.cpu(), 
+      policy_targets.cpu(), 
+      value_targets.cpu(), 
+      losses.cpu(), 
+      decay_coeffs
+    )
     self._delete_high_priority_records(batch_size)
     self._priority_decay()
     self.insert_record(new_records)
@@ -142,26 +170,28 @@ class ExpPool:
   def _get_batch(self, batch_size: int, *, device = 'cuda' if torch.cuda.is_available() else 'cpu') \
     -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, list[float], list[float]]:
     '''
-    return inputs(B, N, M), policy_targets(B, N, M), value_targets(B, 1), original_average_loss, decay_coeffs
+    return inputs(B, C, N, M), policy_targets(B, N, M), value_targets(B, 1), original_average_loss, decay_coeffs
 
     remove sampled records. after sampling and training, insert them back by users explicitly
     to update losses
     '''
     top_records = self.sorted_records[-batch_size:]
-    inputs = torch.cat([record.input for record in top_records], dim=0).to(device=device)
-    policy_targets = torch.cat([record.policy_target for record in top_records], dim=0).to(device=device)
-    value_targets = torch.cat([record.value_target for record in top_records], dim=0).to(device=device)
-    original_average_loss = [record.loss for record in top_records]
-    decay_coeffs = [record.decay_coeff for record in top_records]
-
-    return inputs, policy_targets, value_targets, original_average_loss, decay_coeffs
+    return Record.stack(top_records, device = device)
 
   def _delete_high_priority_records(self, batch_size: int):
     del self.sorted_records[-batch_size:]
 
   def _priority_decay(self):
+    # to reduce decay frequency. decay is O(n), costs quite much
+    # time when pool is big.
+    DECAY_INTERVAL = 10
+    self._decay_mark = (self._decay_mark + 1) % DECAY_INTERVAL
+    if self._decay_mark != 0:
+      return
+    
+    decay_ratio = self.decay_ratio ** DECAY_INTERVAL
     for record in self.sorted_records:
-      record.decay_coeff *= self.decay_ratio
+      record.decay_coeff *= decay_ratio
     # no need to readjust since the order relation remains
 
   @property
