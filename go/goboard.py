@@ -23,27 +23,16 @@ class Board():
     else:
       self.c_board = c_board
 
+  C_PLAYER_TO_PY_PLAYER_TABLE = { 0: None, 1: Player.black, 2: Player.white }
+  PY_PLAYER_TO_C_PLAYER_TABLE = { None: 0, Player.black: 1, Player.white: 2 }
+
   @staticmethod
   def c_player_to_py_player(c_player: int) -> Player:
-    if c_player == 0:
-      return None
-    elif c_player == 1:
-      return Player.black
-    elif c_player == 2:
-      return Player.white
-    else:
-      raise ValueError(f'unknown c player {c_player}')
+    return Board.C_PLAYER_TO_PY_PLAYER_TABLE[c_player]
 
   @staticmethod
   def py_player_to_c_player(py_player: Player) -> int:
-    if py_player is None:
-      return 0
-    elif py_player == Player.black:
-      return 1
-    elif py_player == Player.white:
-      return 2
-    else:
-      raise ValueError(f'unknown py player {py_player}')
+    return Board.PY_PLAYER_TO_C_PLAYER_TABLE[py_player]
 
   @property
   def size(self) -> tuple[int, int]:
