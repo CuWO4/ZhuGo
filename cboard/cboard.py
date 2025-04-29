@@ -1,16 +1,16 @@
 from .boardmodule import (
   new_board,
-   delete_board,
-   clone_board,
-   get_piece,
-   get_qi,
-   get_random_qi_pos,
-   is_valid_move,
-   place_piece,
-   hash as zobrist_hash,
-   serialize,
-   deserialize,
-   does_violate_ko as does_violate_ko_c,
+  delete_board,
+  clone_board,
+  get_piece,
+  get_qi,
+  get_random_qi_pos,
+  is_valid_move,
+  place_piece,
+  hash as zobrist_hash,
+  serialize,
+  deserialize,
+  does_violate_ko as does_violate_ko_c,
 )
 # visit C extension functions by `boardmodule.xxx` may fail and get None when torch.nn is imported
 # before this file for unknown reason, while `from ... import ...` would not trigger the bug

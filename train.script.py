@@ -6,11 +6,7 @@ def main():
   parser.add_argument('--batch-size', type = int, default = 128)
   # supervisor learning does not requires very large batch size
   parser.add_argument('-d', '--dataset', type = str, required = True, help = 'root to dataset')
-  parser.add_argument('--refuel-records', type = int, default = 2000, help = 'count of records '
-                      'in each refueling')
-  parser.add_argument('-c', '--capacity', type = int, default = 2001, help = 'capacity of '
-                      'exp pool') # to avoid periodic zero values ​​due to pool emptying
-  parser.add_argument('--batch-per-refuel', type = int, default = 16)
+  parser.add_argument('--batch-per-test', type = int, default = 100)
   parser.add_argument('--test-dataset', type = str, help = 'root to test dataset. if not given, '
                       'test phase is skipped')
   parser.add_argument('--lr', type = float, default = 0.1, help = 'base lr')
@@ -30,25 +26,22 @@ def main():
   from ai.zhugo import ZhuGo
   from ai.encoder.zhugo_encoder import ZhuGoEncoder
   from ai.manager import ModelManager
-  from train.exp_pool import ExpPool
   from train.dataloader import BGTFDataLoader
 
 
   trainer = Trainer(
     model_manager = ModelManager(args.model, ZhuGo),
-    batch_size = args.batch_size,
     dataloader = BGTFDataLoader(
       args.dataset,
-      args.refuel_records,
-      ZhuGoEncoder(device = 'cpu'), # use to refuel exp pool
+      args.batch_size,
+      ZhuGoEncoder(device = 'cpu'), # prefetched tensors saved on cpu
       debug = True,
     ),
-    exp_pool = ExpPool(args.capacity),
-    batch_per_refuel = args.batch_per_refuel,
+    batch_per_test = args.batch_per_test,
     test_dataloader = BGTFDataLoader(
       args.test_dataset,
       64,
-      ZhuGoEncoder(device = 'cpu'), # use to refuel exp pool
+      ZhuGoEncoder(device = 'cpu'), # prefetched tensors saved on cpu
     )
       if args.test_dataset is not None
       else None,
