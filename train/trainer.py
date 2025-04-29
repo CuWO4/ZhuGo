@@ -1,10 +1,11 @@
 from ai.manager import ModelManager
 from .dataloader import BGTFDataLoader
-from .exp_pool import ExpPool, Record
+from .meta import MetaData
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.utils.tensorboard import SummaryWriter
 from typing import Callable
 import time
 from datetime import datetime
@@ -17,8 +18,10 @@ __all__ = [
 def ctrl_c_catcher(func: Callable, exit_func: Callable):
   try:
     func()
-  except KeyboardInterrupt as e:
+  except KeyboardInterrupt:
     pass
+  except Exception as e:
+    raise e
   finally:
     while True:
       try:
@@ -48,10 +51,8 @@ class Trainer:
   def __init__(
     self,
     model_manager: ModelManager,
-    batch_size: int,
     dataloader: BGTFDataLoader,
-    exp_pool: ExpPool,
-    batch_per_refuel: int,
+    batch_per_test: int,
     test_dataloader: BGTFDataLoader | None = None,
     policy_lost_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = cross_entropy,
     value_lost_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = mse,
@@ -65,10 +66,8 @@ class Trainer:
     checkpoint_interval_sec: int = 3600,
   ):
     self.model_manager: ModelManager = model_manager
-    self.batch_size: int = batch_size
     self.dataloader: BGTFDataLoader = dataloader
-    self.exp_pool: ExpPool | None = exp_pool
-    self.batch_per_refuel: int = batch_per_refuel
+    self.batch_per_test: int = batch_per_test
     self.test_dataloader: BGTFDataLoader | None = test_dataloader
     self.policy_lost_fn: Callable = policy_lost_fn
     self.value_lost_fn: Callable = value_lost_fn
@@ -94,99 +93,94 @@ class Trainer:
       model.train()
       meta = self.model_manager.load_meta()
 
-      def train_body():
-        optimizer = optim.SGD(
-          model.parameters(),
-          lr = self.base_lr,
-          weight_decay = self.weight_decay,
-          momentum = self.momentum
-        )
-        schedular = optim.lr_scheduler.CosineAnnealingLR(
-          optimizer, T_max = self.T_max, eta_min = self.eta_min
-        )
-
-        def train_f(
-          inputs: torch.Tensor,
-          policy_targets: torch.Tensor,
-          value_targets: torch.Tensor,
-          ori_losses: list[float]
-        ):
-          policy_logits, value_logits = model(inputs)
-
-          policy_losses = self.policy_lost_fn(policy_targets, policy_logits)
-          value_losses = self.value_lost_fn(value_targets, nn.functional.tanh(value_logits))
-          losses = self.policy_loss_weight * policy_losses + self.value_loss_weight * value_losses
-
-          loss = torch.mean(losses)
-          optimizer.zero_grad()
-          loss.backward()
-          optimizer.step()
-
-          original_loss = sum(ori_losses) / len(ori_losses)
-
-          schedular.step()
-
-          print(
-            f'{"train:":>10}'
-            f'{self.exp_pool.size:12}'
-            f'{loss.item():12.3f}'
-            f'{original_loss:12.3f}'
-            f'{self.exp_pool.loss_mean:12.3f}'
-            f'{"press Ctrl-C to stop":>30}'
-          )
-
-          writer.add_scalar('train/batch-loss', loss, meta.batches)
-          writer.add_scalar('train/pool-loss', self.exp_pool.loss_mean, meta.batches)
-          writer.add_scalar('train/lr', schedular.get_last_lr()[0], meta.batches)
-
-          return losses
-        # train_f end
-
-        last_checkpoint_time = time.time()
-
-        for records in self.dataloader:
-          print('refueling...')
-          self.exp_pool.insert_record(records)
-
-          for _ in range(self.batch_per_refuel):
-            self.exp_pool.train_on_batch(self.batch_size, train_f, device = device)
-            meta.batches += 1
-
-          if self.test_dataloader is not None:
-            test_records = next(iter(self.test_dataloader))
-            inputs, policies, values, _, _ = Record.stack(test_records, device = device)
-
-            with torch.no_grad():
-              model.eval()
-              policy_logits, value_logits = model(inputs)
-              model.train()
-
-            policy_losses = self.policy_lost_fn(policies, policy_logits)
-            value_losses = self.value_lost_fn(values, nn.functional.tanh(value_logits))
-            losses = self.policy_loss_weight * policy_losses + self.value_loss_weight * value_losses
-            loss = torch.mean(losses)
-
-            print(
-              f'{"test:":>10}'
-              f'{loss.item():12.3f}'
-            )
-            writer.add_scalar('test/loss', loss, meta.batches)
-
-          if time.time() - last_checkpoint_time >= self.checkpoint_interval_sec:
-            print('saving checkpoint...')
-            self.model_manager.save_checkpoint(model)
-            for name, param in model.named_parameters():
-              writer.add_histogram(f'weights/{name}', param, meta.batches)
-              if param.grad is not None:
-                writer.add_histogram(f'grads/{name}', param.grad, meta.batches)
-            print(f'checkpoint saved at {datetime.now().strftime("%H:%M:%S")}')
-            last_checkpoint_time = time.time()
-
-      # train_body end
-
       def stop_handling():
         print('stopped. saving...')
         self.model_manager.save_model(model)
         self.model_manager.save_meta(meta)
 
-      ctrl_c_catcher(train_body, stop_handling)
+      ctrl_c_catcher(
+        lambda: self.train_body(model, meta, writer),
+        stop_handling
+      )
+
+  def train_body(self, model: nn.Module, meta: MetaData, writer: SummaryWriter):
+    optimizer = optim.SGD(
+      model.parameters(),
+      lr = self.base_lr,
+      weight_decay = self.weight_decay,
+      momentum = self.momentum
+    )
+    schedular = optim.lr_scheduler.CosineAnnealingLR(
+      optimizer, T_max = self.T_max, eta_min = self.eta_min
+    )
+
+    last_checkpoint_time = time.time()
+
+    for inputs, policy_targets, value_targets in self.dataloader:
+      policy_logits, value_logits = model(inputs)
+
+      policy_losses = self.policy_lost_fn(policy_targets, policy_logits)
+      value_losses = self.value_lost_fn(value_targets, nn.functional.tanh(value_logits))
+      losses = self.policy_loss_weight * policy_losses + self.value_loss_weight * value_losses
+
+      loss = torch.mean(losses)
+      optimizer.zero_grad()
+      loss.backward()
+      optimizer.step()
+
+      schedular.step()
+
+      print(
+        f'{"train:":>10}'
+        f'{loss.item():12.3f}'
+        f'{"press Ctrl-C to stop":>30}'
+      )
+
+      writer.add_scalar('train/batch-loss', loss, meta.batches)
+      writer.add_scalar('train/lr', schedular.get_last_lr()[0], meta.batches)
+
+      meta.batches += 1
+
+      if meta.batches % self.batch_per_test != 0:
+        continue
+
+      if self.test_dataloader is not None:
+        loss = self.test_model(model)
+        print(
+          f'{"test:":>10}'
+          f'{loss.item():12.3f}'
+        )
+        writer.add_scalar('test/loss', loss, meta.batches)
+
+      if time.time() - last_checkpoint_time >= self.checkpoint_interval_sec:
+        print('saving checkpoint...')
+        self.save_checkpoint(model)
+        self.log_histogram(model, meta, writer)
+        last_checkpoint_time = time.time()
+        print(f'checkpoint saved at {datetime.now().strftime("%H:%M:%S")}')
+
+
+  def test_model(self, model: nn.Module) -> torch.Tensor:
+    '''return loss'''
+    assert self.test_dataloader is not None
+    inputs, policies, values = next(iter(self.test_dataloader))
+
+    with torch.no_grad():
+      model.eval()
+      policy_logits, value_logits = model(inputs)
+      model.train()
+
+    policy_losses = self.policy_lost_fn(policies, policy_logits)
+    value_losses = self.value_lost_fn(values, nn.functional.tanh(value_logits))
+    losses = self.policy_loss_weight * policy_losses + self.value_loss_weight * value_losses
+    loss = torch.mean(losses)
+    return loss
+
+  def save_checkpoint(self, model: nn.Module):
+    self.model_manager.save_checkpoint(model)
+
+  def log_histogram(self, model: nn.Module, meta: MetaData, writer: SummaryWriter):
+    for name, param in model.named_parameters():
+      writer.add_histogram(f'weights/{name}', param, meta.batches)
+      if param.grad is not None:
+        writer.add_histogram(f'grads/{name}', param.grad, meta.batches)
