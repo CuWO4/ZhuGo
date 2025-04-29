@@ -17,7 +17,7 @@ c_files += find_c_files(script_dir + "/../cboard")
 import numpy
 numpy_dir = os.path.dirname(numpy.__file__)
 
-cboard_extension = Extension(
+cencoder_extension = Extension(
   'encodermodule',
   sources=c_files,
   extra_compile_args=['-O2', '-DNDEBUG', '-std=c++17' if sys.platform == 'linux' else '/std:c++17'],
@@ -31,5 +31,5 @@ setup(
   name='encoder',
   version='1.0',
   description='C Encoder module for ZhuGo',
-  ext_modules=[cboard_extension],
+  ext_modules=[cencoder_extension],
 )
