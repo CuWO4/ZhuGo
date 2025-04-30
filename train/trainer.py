@@ -65,6 +65,8 @@ class Trainer:
     eta_min: float,
     policy_loss_weight: float,
     value_loss_weight: float,
+    soft_target_nominal_weight: float,
+    softening_intensity: float,
     checkpoint_interval_sec: int,
   ):
     self.model_manager: ModelManager = model_manager
@@ -81,6 +83,8 @@ class Trainer:
     self.eta_min: float = eta_min
     self.policy_loss_weight: float = policy_loss_weight
     self.value_loss_weight: float = value_loss_weight
+    self.soft_target_nominal_weight: float = soft_target_nominal_weight
+    self.softening_intensity: float = softening_intensity
     self.checkpoint_interval_sec: int = checkpoint_interval_sec
 
   def train(self, device = 'cuda' if torch.cuda.is_available() else 'cpu'):
@@ -124,6 +128,13 @@ class Trainer:
 
       policy_losses = self.policy_lost_fn(policy_targets, policy_logits)
       value_losses = self.value_lost_fn(value_targets, nn.functional.tanh(value_logits))
+
+      softened_policy_target = policy_targets ** self.softening_intensity
+      softened_policy_target /= softened_policy_target.sum(dim = -1, keepdim = True)
+
+      policy_losses += self.soft_target_nominal_weight * self.policy_lost_fn(softened_policy_target, policy_logits)
+      policy_losses /= (1 + self.soft_target_nominal_weight)
+
       losses = self.policy_loss_weight * policy_losses + self.value_loss_weight * value_losses
 
       loss = torch.mean(losses)

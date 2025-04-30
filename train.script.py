@@ -17,6 +17,10 @@ def main():
   parser.add_argument('--eta_min', type = float, default = 1e-4, help = 'least lr')
   parser.add_argument('--policy-loss-weight', type = float, default = 0.85)
   parser.add_argument('--value-loss-weight', type = float, default = 0.03)
+  parser.add_argument('--soft-target-nominal-weight', type = float, default = 2.0, 
+                      help = 'nominal weight of soft policy target')
+  parser.add_argument('--softening-intensity', type = float, default = 1 / 4, 
+                      help = 'softening temperature / original temperature')
   parser.add_argument('--checkpoint-interval-sec', type = int, default = 3600, help = 'seconds '
                       'between two checkpoints saved')
   args = parser.parse_args()
@@ -54,6 +58,8 @@ def main():
     eta_min = args.eta_min,
     policy_loss_weight = args.policy_loss_weight,
     value_loss_weight = args.value_loss_weight,
+    soft_target_nominal_weight = args.soft_target_nominal_weight,
+    softening_intensity = args.softening_intensity,
     checkpoint_interval_sec = args.checkpoint_interval_sec,
   )
 
