@@ -20,15 +20,8 @@ def ctrl_c_catcher(func: Callable, exit_func: Callable):
     func()
   except KeyboardInterrupt:
     pass
-  except Exception as e:
-    raise e
   finally:
-    while True:
-      try:
-        exit_func()
-        return
-      except KeyboardInterrupt:
-        pass
+    exit_func()
 
 def cross_entropy(target: torch.Tensor, output_logits: torch.Tensor) -> torch.Tensor:
   '''p(B, N), q_logits(B, N) -> (B, 1)'''
