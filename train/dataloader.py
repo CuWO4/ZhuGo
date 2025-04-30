@@ -8,6 +8,7 @@ import os
 import random
 import time
 from itertools import cycle
+from operator import itemgetter
 from typing import Iterator, Callable
 
 __all__ = [
@@ -103,9 +104,9 @@ class BGTFDataLoader:
       if len(batch) >= batch_size:
         busy_wait(lambda: result_queue.qsize() < prefetch_batch, 50)
         batch_tensor = (
-          torch.cat([tensors[0] for tensors in batch], dim = 0),
-          torch.cat([tensors[1] for tensors in batch], dim = 0),
-          torch.cat([tensors[2] for tensors in batch], dim = 0),
+          torch.cat(list(map(itemgetter(0), batch)), dim = 0),
+          torch.cat(list(map(itemgetter(1), batch)), dim = 0),
+          torch.cat(list(map(itemgetter(2), batch)), dim = 0),
         )
         result_queue.put(batch_tensor)
         batch = []
