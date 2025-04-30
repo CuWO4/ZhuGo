@@ -29,7 +29,7 @@ class BGTFDataLoader:
     prefetch_batch: int = 300,
     device: str = 'cuda' if torch.cuda.is_available else 'cpu',
     # file decoding, data enhancement and move to share memory are
-    # relevantly slow, requires big prefetch batch 
+    # relevantly slow, requires big prefetch batch
     debug: bool = False
   ):
     super().__init__()
@@ -38,7 +38,7 @@ class BGTFDataLoader:
     self.cached = mp.Queue()
 
     encoder.device = 'cpu' # store prefetched tensors on cpu
-    
+
     mp.Process(
       target = self.decode_worker,
       kwargs = {
@@ -68,8 +68,10 @@ class BGTFDataLoader:
     for file in cycle(files):
       if debug:
         print(f'<record_stream> loading {file}')
-      try:
-        inputs_targets = [
+
+      results = []
+      for game, policy, value in load_file(file):
+        rotated_tensors = [
           (
             rotated_input.cpu().unsqueeze_(0),
             torch.cat(
@@ -77,16 +79,16 @@ class BGTFDataLoader:
             ).cpu().unsqueeze_(0),
             value.cpu().unsqueeze(0)
           )
-          for game, policy, value in load_file(file)
           for rotated_input, rotated_policy in zip(
             get_d8_sym_tensors(encoder.encode(game)),
             get_d8_sym_tensors(policy[:361].view(19, 19))
           )
         ]
-        random.shuffle(inputs_targets)
-        yield from inputs_targets
-      except Exception as e:
-        print(f'<record_stream> error `{e}` happened when handling `{file}`')
+        random.shuffle(rotated_tensors)
+        results += rotated_tensors[:2] # to avoid overfitting and wasting
+
+      random.shuffle(results)
+      yield from results
 
   @staticmethod
   def decode_worker(
