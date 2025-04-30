@@ -12,10 +12,11 @@ def main():
   parser.add_argument('--lr', type = float, default = 0.1, help = 'base lr')
   parser.add_argument('--weight-decay', type = float, default = 1e-4)
   parser.add_argument('--momentum', type = float, default = 0.9)
+  parser.add_argument('--gradient-clip', type = float, default = 2.0)
   parser.add_argument('--T_max', type = int, default = 10000, help = 'T_max of cosine lr schedular')
   parser.add_argument('--eta_min', type = float, default = 1e-4, help = 'least lr')
-  parser.add_argument('--policy-loss-weight', type = float, default = 0.7)
-  parser.add_argument('--value-loss-weight', type = float, default = 0.3)
+  parser.add_argument('--policy-loss-weight', type = float, default = 0.85)
+  parser.add_argument('--value-loss-weight', type = float, default = 0.03)
   parser.add_argument('--checkpoint-interval-sec', type = int, default = 3600, help = 'seconds '
                       'between two checkpoints saved')
   args = parser.parse_args()
@@ -48,6 +49,7 @@ def main():
     base_lr = args.lr,
     weight_decay = args.weight_decay,
     momentum = args.momentum,
+    gradient_clip = args.gradient_clip,
     T_max = args.T_max,
     eta_min = args.eta_min,
     policy_loss_weight = args.policy_loss_weight,

@@ -50,20 +50,22 @@ def mse(target: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
 class Trainer:
   def __init__(
     self,
+    *,
     model_manager: ModelManager,
     dataloader: BGTFDataLoader,
     batch_per_test: int,
     test_dataloader: BGTFDataLoader | None = None,
     policy_lost_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = cross_entropy,
     value_lost_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = mse,
-    base_lr: float = 0.1,
-    weight_decay: float = 1e-4,
-    momentum: float = 0.9,
-    T_max: int = 10000,
-    eta_min: float = 1e-3,
-    policy_loss_weight: float = 0.7,
-    value_loss_weight: float = 0.3,
-    checkpoint_interval_sec: int = 3600,
+    base_lr: float,
+    weight_decay: float,
+    momentum: float,
+    gradient_clip: float,
+    T_max: int,
+    eta_min: float,
+    policy_loss_weight: float,
+    value_loss_weight: float,
+    checkpoint_interval_sec: int,
   ):
     self.model_manager: ModelManager = model_manager
     self.dataloader: BGTFDataLoader = dataloader
@@ -74,6 +76,7 @@ class Trainer:
     self.base_lr: float = base_lr
     self.weight_decay: float = weight_decay
     self.momentum: float = momentum
+    self.gradient_clip: float = gradient_clip
     self.T_max: int = T_max
     self.eta_min: float = eta_min
     self.policy_loss_weight: float = policy_loss_weight
@@ -126,6 +129,7 @@ class Trainer:
       loss = torch.mean(losses)
       optimizer.zero_grad()
       loss.backward()
+      nn.utils.clip_grad_norm_(model.parameters(), self.gradient_clip)
       optimizer.step()
 
       schedular.step()
