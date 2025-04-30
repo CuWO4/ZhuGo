@@ -1,5 +1,4 @@
 from dataloader.bgtf_zstd_loader import load_file
-from .exp_pool import Record
 from ai.encoder.base import Encoder
 from ai.utils.rotate import get_d8_sym_tensors
 
@@ -16,42 +15,9 @@ __all__ = [
 ]
 
 
-def get_d8_sym_records(
-  input: torch.Tensor,
-  policy_target: torch.Tensor,
-  value_target: torch.Tensor
-) -> Iterator[Record]:
-  '''input(C, 19, 19), policy_target(19 * 19 + 1), value_target(1)'''
-  assert (
-    input.shape == (input.shape[0], 19, 19)
-    and policy_target.shape == (362,)
-    and value_target.shape == (1,)
-  ), (
-    f"<{get_d8_sym_records.__name__}>: invalid tensor shape "
-    f"{input.shape=} {policy_target.shape=} {value_target.shape=}"
-  )
-
-  return (
-    Record(
-      input = new_input.unsqueeze(0),
-      policy_target = torch.cat((new_policy.reshape(361), policy_target[361:]), dim = 0).unsqueeze(0),
-      value_target = value_target.clone().unsqueeze(0),
-      loss = float('inf'),
-    )
-    for new_input, new_policy in zip(
-      get_d8_sym_tensors(input),
-      get_d8_sym_tensors(policy_target[:361].view(19, 19)),
-    )
-  )
-
 def busy_wait(end_cond: Callable, interval_ms: int):
   while not end_cond(): time.sleep(interval_ms * 1e-3)
 
-# the bgtf is encoded time dependently, and is used to refuel exp pool
-# so pytorch architecture does not suite. though extending
-# torch.utils.data.IterableDataset can also implement the function,
-# unnecessary dependencies are imported. a from zero implementation
-# would be more concise.
 class BGTFDataLoader:
   def __init__(
     self,
@@ -59,12 +25,19 @@ class BGTFDataLoader:
     batch_size: int,
     encoder: Encoder,
     *,
-    prefetch_batch: int = 2,
+    prefetch_batch: int = 300,
+    device: str = 'cuda' if torch.cuda.is_available else 'cpu',
+    # file decoding, data enhancement and move to share memory are
+    # relevantly slow, requires big prefetch batch 
     debug: bool = False
   ):
     super().__init__()
+    self.device = device
     self.debug = debug
     self.cached = mp.Queue()
+
+    encoder.device = 'cpu' # store prefetched tensors on cpu
+    
     mp.Process(
       target = self.decode_worker,
       kwargs = {
@@ -78,25 +51,39 @@ class BGTFDataLoader:
       daemon = True,
     ).start()
 
-  def __iter__(self) -> Iterator:
+  def __iter__(self) -> Iterator[tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
     while True:
-      yield self.cached.get(block = True)
+      inputs, policies, values = self.cached.get(block = True)
+      inputs = inputs.to(device = self.device)
+      policies = policies.to(device = self.device)
+      values = values.to(device = self.device)
+      yield inputs, policies, values
 
   @staticmethod
-  def record_stream(root: str, encoder: Encoder, debug: bool) -> Iterator[Record]:
+  def input_target_stream(root: str, encoder: Encoder, debug: bool) \
+    -> Iterator[tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
     files = [path for f in os.listdir(root) if os.path.isfile(path := os.path.join(root, f))]
     random.shuffle(files)
     for file in cycle(files):
       if debug:
         print(f'<record_stream> loading {file}')
       try:
-        records = [
-          record
+        inputs_targets = [
+          (
+            rotated_input.cpu().unsqueeze_(0),
+            torch.cat(
+              (rotated_policy.reshape(361), policy[361:])
+            ).cpu().unsqueeze_(0),
+            value.cpu().unsqueeze(0)
+          )
           for game, policy, value in load_file(file)
-          for record in get_d8_sym_records(encoder.encode(game), policy, value)
+          for rotated_input, rotated_policy in zip(
+            get_d8_sym_tensors(encoder.encode(game)),
+            get_d8_sym_tensors(policy[:361].view(19, 19))
+          )
         ]
-        random.shuffle(records)
-        yield from records
+        random.shuffle(inputs_targets)
+        yield from inputs_targets
       except Exception as e:
         print(f'<record_stream> error `{e}` happened when handling `{file}`')
 
@@ -111,9 +98,14 @@ class BGTFDataLoader:
   ) -> None:
     random.seed()
     batch = []
-    for record in BGTFDataLoader.record_stream(root, encoder, debug):
-      batch.append(record.share_memory_())
+    for tensors in BGTFDataLoader.input_target_stream(root, encoder, debug):
+      batch.append(tensors)
       if len(batch) >= batch_size:
         busy_wait(lambda: result_queue.qsize() < prefetch_batch, 50)
-        result_queue.put(batch)
+        batch_tensor = (
+          torch.cat([tensors[0] for tensors in batch], dim = 0),
+          torch.cat([tensors[1] for tensors in batch], dim = 0),
+          torch.cat([tensors[2] for tensors in batch], dim = 0),
+        )
+        result_queue.put(batch_tensor)
         batch = []
