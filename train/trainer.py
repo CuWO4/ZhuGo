@@ -136,7 +136,9 @@ class Trainer:
         f'{"press Ctrl-C to stop":>30}'
       )
 
-      writer.add_scalar('train/batch-loss', loss, meta.batches)
+      writer.add_scalars('train/total_loss', { 'train': loss, }, meta.batches)
+      writer.add_scalars('train/policy_loss', { 'train': policy_losses.mean(), }, meta.batches)
+      writer.add_scalars('train/value_loss', { 'train': value_losses.mean(), }, meta.batches)
       writer.add_scalar('train/lr', schedular.get_last_lr()[0], meta.batches)
 
       meta.batches += 1
@@ -145,12 +147,18 @@ class Trainer:
         continue
 
       if self.test_dataloader is not None:
-        loss = self.test_model(model)
+        validate_policy_loss, validate_value_loss = self.test_model(model)
+        validate_loss = (
+          self.policy_loss_weight * validate_policy_loss
+          + self.value_loss_weight * validate_value_loss
+        )
         print(
           f'{"test:":>10}'
-          f'{loss.item():12.3f}'
+          f'{validate_loss.item():12.3f}'
         )
-        writer.add_scalar('test/loss', loss, meta.batches)
+        writer.add_scalars('train/total_loss', { 'validate': validate_loss, }, meta.batches)
+        writer.add_scalars('train/policy_loss', { 'validate': validate_policy_loss, }, meta.batches)
+        writer.add_scalars('train/value_loss', { 'validate': validate_value_loss, }, meta.batches)
 
       if time.time() - last_checkpoint_time >= self.checkpoint_interval_sec:
         print('saving checkpoint...')
@@ -160,8 +168,8 @@ class Trainer:
         print(f'checkpoint saved at {datetime.now().strftime("%H:%M:%S")}')
 
 
-  def test_model(self, model: nn.Module) -> torch.Tensor:
-    '''return loss'''
+  def test_model(self, model: nn.Module) -> tuple[torch.Tensor, torch.Tensor]:
+    '''return policy_loss(1), value_loss(1)'''
     assert self.test_dataloader is not None
     inputs, policies, values = next(iter(self.test_dataloader))
 
@@ -172,9 +180,7 @@ class Trainer:
 
     policy_losses = self.policy_lost_fn(policies, policy_logits)
     value_losses = self.value_lost_fn(values, nn.functional.tanh(value_logits))
-    losses = self.policy_loss_weight * policy_losses + self.value_loss_weight * value_losses
-    loss = torch.mean(losses)
-    return loss
+    return policy_losses.mean(), value_losses.mean()
 
   def save_checkpoint(self, model: nn.Module):
     self.model_manager.save_checkpoint(model)
