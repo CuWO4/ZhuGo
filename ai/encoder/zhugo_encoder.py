@@ -30,6 +30,16 @@ class ZhuGoEncoder(Encoder):
 
   CHANNELS = 26
 
+  SELF_STONE_OFF = 0
+  OPPONENT_STONE_OFF = 1
+  PLAYER_OFF = 2
+  VALID_MOVE_OFF = 4
+  QI_OFF = 5
+  QI_AFTER_PLAY_OFF = 13
+  LADDER_OFF = 21
+  KO_OFF = 24
+  POSITION_OFF = 25
+
   def __init__(self, *, device: str = 'cuda' if torch.cuda.is_available() else 'cpu') -> None:
     super().__init__(device=device)
 
