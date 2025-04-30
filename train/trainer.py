@@ -2,6 +2,8 @@ from ai.manager import ModelManager
 from .dataloader import BGTFDataLoader
 from .meta import MetaData
 
+from ai.encoder.zhugo_encoder import ZhuGoEncoder # dirty code, but let's do it for now
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -117,13 +119,16 @@ class Trainer:
     last_checkpoint_time = time.time()
 
     for inputs, policy_targets, value_targets in self.dataloader:
+      valid_mask = self.get_valid_mask(inputs)
+      policy_targets *= valid_mask # invalid moves does not engage in backward
+
       policy_logits, value_logits = model(inputs)
 
       policy_losses = self.policy_lost_fn(policy_targets, policy_logits)
       value_losses = self.value_lost_fn(value_targets, nn.functional.tanh(value_logits))
 
       softened_policy_target = policy_targets ** self.softening_intensity
-      softened_policy_target /= softened_policy_target.sum(dim = -1, keepdim = True)
+      softened_policy_target /= softened_policy_target.sum(dim = -1, keepdim = True) + 1e-8
 
       policy_losses += self.soft_target_nominal_weight * self.policy_lost_fn(softened_policy_target, policy_logits)
       policy_losses /= (1 + self.soft_target_nominal_weight)
@@ -175,7 +180,6 @@ class Trainer:
         last_checkpoint_time = time.time()
         print(f'checkpoint saved at {datetime.now().strftime("%H:%M:%S")}')
 
-
   def test_model(self, model: nn.Module) -> tuple[torch.Tensor, torch.Tensor]:
     '''return policy_loss(1), value_loss(1)'''
     assert self.test_dataloader is not None
@@ -198,3 +202,18 @@ class Trainer:
       writer.add_histogram(f'weights/{name}', param, meta.batches)
       if param.grad is not None:
         writer.add_histogram(f'grads/{name}', param.grad, meta.batches)
+
+  @staticmethod
+  def get_valid_mask(inputs: torch.Tensor) -> torch.Tensor:
+    '''
+    inputs(B, C, 19, 19) -> (B, 362)
+    assume inputs is encoded with ZhuGoEncoder
+    '''
+    batch_size = inputs.shape[0]
+    valid_mask = inputs[:, ZhuGoEncoder.VALID_MOVE_OFF, :, :]
+    return torch.cat(
+      (
+        valid_mask.reshape(batch_size, 361),
+        torch.ones(batch_size, 1, device = valid_mask.device)
+      ), dim = 1
+    )
