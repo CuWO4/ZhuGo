@@ -45,7 +45,7 @@ def main():
     batch_per_test = args.batch_per_test,
     test_dataloader = BGTFDataLoader(
       args.test_dataset,
-      64,
+      args.batch_size,
       ZhuGoEncoder(device = 'cpu'), # prefetched tensors saved on cpu
     )
       if args.test_dataset is not None
