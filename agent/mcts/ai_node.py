@@ -42,7 +42,7 @@ class AINode(Node):
     with torch.no_grad():
       input_tensor = encoder.encode(game_state).unsqueeze(0)
       policy_logits, value_logits = model(input_tensor)
-      policy_logits = policy_logits.detach()
+      policy_logits = policy_logits.detach().squeeze(0)
       value_logits = value_logits.detach()
 
     policy_logits += (torch.tensor(self.legal_mask, device=policy_logits.device) - 1) * 1e5
