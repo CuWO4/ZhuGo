@@ -19,7 +19,7 @@ __all__ = [
 class AIAgent(MCTSAgent):
   def __init__(
     self,
-    model: str | ZhuGo, noise_intensity: float = 0,
+    model: str | ZhuGo,
     *, node_settings: dict
   ):
     super().__init__(node_type_name='agent.mcts.ai_node.AINode', node_settings=node_settings)
