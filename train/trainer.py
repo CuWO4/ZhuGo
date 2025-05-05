@@ -48,6 +48,7 @@ class Trainer:
     *,
     model_manager: ModelManager,
     dataloader: BGTFDataLoader,
+    batch_accumulation: int,
     batch_per_test: int,
     test_dataloader: BGTFDataLoader | None = None,
     policy_lost_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = cross_entropy,
@@ -66,6 +67,7 @@ class Trainer:
   ):
     self.model_manager: ModelManager = model_manager
     self.dataloader: BGTFDataLoader = dataloader
+    self.batch_accumulation: int = batch_accumulation
     self.batch_per_test: int = batch_per_test
     self.test_dataloader: BGTFDataLoader | None = test_dataloader
     self.policy_lost_fn: Callable = policy_lost_fn
@@ -118,6 +120,11 @@ class Trainer:
 
     last_checkpoint_time = time.time()
 
+    # only for displaying statics
+    accumulated_total_loss: float = 0
+    accumulated_policy_loss: float = 0
+    accumulated_value_loss: float = 0
+
     for inputs, policy_targets, value_targets in self.dataloader:
       valid_mask = self.get_valid_mask(inputs)
       policy_targets *= valid_mask # invalid moves does not engage in backward
@@ -136,42 +143,57 @@ class Trainer:
       losses = self.policy_loss_weight * policy_losses + self.value_loss_weight * value_losses
 
       loss = torch.mean(losses)
-      optimizer.zero_grad()
-      loss.backward()
-      nn.utils.clip_grad_norm_(model.parameters(), self.gradient_clip)
-      optimizer.step()
+      backward_loss = loss / self.batch_accumulation
+      backward_loss.backward()
 
-      schedular.step()
-
-      print(
-        f'{"train:":>10}'
-        f'{loss.item():12.3f}'
-        f'{"press Ctrl-C to stop":>30}'
+      self.log_losses(
+        'train', meta,
+        loss.item(),
+        policy_losses.mean().item(),
+        value_losses.mean().item(),
+        writer
       )
 
-      writer.add_scalars('train/total_loss', { 'train': loss, }, meta.batches)
-      writer.add_scalars('train/policy_loss', { 'train': policy_losses.mean(), }, meta.batches)
-      writer.add_scalars('train/value_loss', { 'train': value_losses.mean(), }, meta.batches)
       writer.add_scalar('train/lr', schedular.get_last_lr()[0], meta.batches)
 
-      meta.batches += 1
+      accumulated_total_loss += loss.item() / self.batch_accumulation
+      accumulated_policy_loss += torch.mean(policy_losses).item() / self.batch_accumulation
+      accumulated_value_loss += torch.mean(value_losses).item() / self.batch_accumulation
 
-      if meta.batches % self.batch_per_test != 0:
-        continue
+      if meta.batches > 0 and meta.batches % self.batch_accumulation == 0:
+        nn.utils.clip_grad_norm_(model.parameters(), self.gradient_clip)
+        optimizer.step()
+        optimizer.zero_grad()
+        schedular.step()
 
-      if self.test_dataloader is not None:
+        if self.batch_accumulation > 0:
+          self.log_losses(
+            'acc', meta,
+            accumulated_total_loss,
+            accumulated_policy_loss,
+            accumulated_value_loss,
+            writer
+          )
+
+        accumulated_total_loss = 0
+        accumulated_policy_loss = 0
+        accumulated_value_loss = 0
+
+      if self.test_dataloader is not None and meta.batches > 0 and meta.batches % self.batch_per_test == 0:
         validate_policy_loss, validate_value_loss = self.test_model(model)
         validate_loss = (
           self.policy_loss_weight * validate_policy_loss
           + self.value_loss_weight * validate_value_loss
         )
-        print(
-          f'{"test:":>10}'
-          f'{validate_loss.item():12.3f}'
+        self.log_losses(
+          'test', meta,
+          validate_loss.item(),
+          validate_policy_loss.item(),
+          validate_value_loss.item(),
+          writer
         )
-        writer.add_scalars('train/total_loss', { 'validate': validate_loss, }, meta.batches)
-        writer.add_scalars('train/policy_loss', { 'validate': validate_policy_loss, }, meta.batches)
-        writer.add_scalars('train/value_loss', { 'validate': validate_value_loss, }, meta.batches)
+
+      meta.batches += 1
 
       if time.time() - last_checkpoint_time >= self.checkpoint_interval_sec:
         print('saving checkpoint...')
@@ -197,7 +219,26 @@ class Trainer:
   def save_checkpoint(self, model: nn.Module):
     self.model_manager.save_checkpoint(model)
 
-  def log_histogram(self, model: nn.Module, meta: MetaData, writer: SummaryWriter):
+  @staticmethod
+  def log_losses(
+    tag: str,
+    meta: MetaData,
+    total_loss: float,
+    policy_loss: float,
+    value_loss: float,
+    writer: SummaryWriter,
+  ):
+    print(
+      f'{meta.batches:>8}'
+      f'{f"<{tag}>":>15}'
+      f'{total_loss:12.3f}'
+    )
+    writer.add_scalars('train/total_loss', { tag: total_loss, }, meta.batches)
+    writer.add_scalars('train/policy_loss', { tag: policy_loss, }, meta.batches)
+    writer.add_scalars('train/value_loss', { tag: value_loss, }, meta.batches)
+
+  @staticmethod
+  def log_histogram(model: nn.Module, meta: MetaData, writer: SummaryWriter):
     for name, param in model.named_parameters():
       writer.add_histogram(f'weights/{name}', param, meta.batches)
       if param.grad is not None:
