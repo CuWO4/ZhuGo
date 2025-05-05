@@ -75,7 +75,7 @@ class TkRenderer:
     row_n: int, col_n: int,
     cell_size: int=40,
     padding: int=60,
-    backgroundd_color: str = '#CDAC6A',
+    background_color: str = '#CDAC6A',
     winning_rate_bar_height: int = 25,
     font: str = 'Consolas'
   ):
@@ -93,7 +93,7 @@ class TkRenderer:
 
     self.winning_rate_bar_height: int = winning_rate_bar_height
 
-    self.backgroundd_color = backgroundd_color
+    self.background_color = background_color
 
     self.font: str = font
 
@@ -107,7 +107,7 @@ class TkRenderer:
       height=self.window_h + padding,
       bd=0,
       highlightthickness=0,
-      bg=self.backgroundd_color
+      bg=self.background_color
     )
     self.canvas.pack()
 
@@ -170,7 +170,7 @@ class TkRenderer:
     cy = self.window_h
     self.canvas.create_oval(
       cx - radius, cy - radius, cx + radius, cy + radius,
-      fill=color, outline=self.backgroundd_color, width=10
+      fill=color, outline=self.background_color, width=10
     )
 
   def draw_lines(self):
@@ -294,7 +294,7 @@ class TkRenderer:
       self.draw_piece(x, y, '#5A5A5A', 2)
       self.draw_piece(x, y, '#262626', 1)
 
-    color = cal_transparent(self.backgroundd_color, color, alpha)
+    color = cal_transparent(self.background_color, color, alpha)
     line_color = cal_transparent('#000000', color, alpha)
     self.draw_piece(x, y, color)
 
