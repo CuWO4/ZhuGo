@@ -229,30 +229,71 @@ class TkRenderer:
       fill=color, outline=color, width=5
     )
 
-  def draw_pieces(self):
+  def draw_mcts_state(self):
+    if self.cur_mcts_data is None:
+      return
+
+    self.draw_mcts_q_bar()
+
+    best_move_pos = self.cur_mcts_data.best_pos()
+
+    display_threshold = 5
+
     for x in range(self.col_n):
       for y in range(self.row_n):
-        stone = self.cur_game_state.board.get(Point(row = y + 1, col = x + 1))
-        if stone == Player.black:
-          self.draw_piece(x, y, "black")
-        elif stone == Player.white:
-          self.draw_piece(x, y, "white")
+        q, visited_time = self.cur_mcts_data.get(row=y, col=x)
 
-  def draw_piece(self, x, y, color, expand=0):
-    cx = self.padding + x * self.cell_size
-    cy = self.padding + y * self.cell_size
-    radius = self.cell_size // 2 - 2 + expand
-    self.canvas.create_oval(
-      cx - radius, cy - radius, cx + radius, cy + radius,
-      fill=color, outline=color
-    )
+        if (y, x) == best_move_pos:
+          candidate_color = '#0CE6E6' # HSV: 180 95 90
+          alpha = 255
+        else:
+          color_table = [      #   H  S  V
+            (0.1,  '#C02F2A'), #   2 78 75
+            (0.3,  '#DA4939'), #   6 74 85
+            (0.45, '#DD8829'), #  32 81 87
+            (0.5,  '#DACA21'), #  55 85 85
+            (0.55, '#ABDA21'), #  76 85 85
+            (0.7,  '#66DA2C'), # 100 80 85
+            (0.9,  '#249C24'), # 120 77 61
+            (1,    '#1D8026')  # 126 77 50
+          ]
+          candidate_color = color_table[0][1]
+          for upper_bound, color in color_table:
+            if q <= upper_bound:
+              candidate_color = color
+              break
+
+          def compress_f(x):
+            return 1 - 1 / (x + 1)
+
+          alpha = int(255 * (0.5 + 0.5 *compress_f(visited_time / 500)))
+
+        self.draw_semitransparent_mcts_point(
+          x = x,
+          y = y,
+          color = candidate_color,
+          alpha = alpha,
+          visited_time = visited_time,
+          q = q,
+          display_threshold = display_threshold
+        )
 
   def draw_semitransparent_mcts_point(
     self,
     x: int, y: int,
     color: str, alpha: int,
-    visited_time: int, q: float
+    visited_time: int, q: float,
+    display_threshold: int,
   ):
+    if visited_time == 0: return
+
+    if visited_time < display_threshold:
+      alpha //= 3
+    else:
+      # stroke
+      self.draw_piece(x, y, '#5A5A5A', 2)
+      self.draw_piece(x, y, '#262626', 1)
+
     color = cal_transparent(self.backgroundd_color, color, alpha)
     line_color = cal_transparent('#000000', color, alpha)
     self.draw_piece(x, y, color)
@@ -276,55 +317,28 @@ class TkRenderer:
       fill = line_color
     )
 
-    vertical_bias = 5
-    self.canvas.create_text(cx, cy - vertical_bias, text=f'{q:.2f}', font=(self.font, 10), fill='black')
-    self.canvas.create_text(cx, cy + vertical_bias, text=f'{int(visited_time)}', font=(self.font, 10), fill='black')
+    if visited_time >= display_threshold:
+      vertical_bias = 5
+      self.canvas.create_text(cx, cy - vertical_bias, text=f'{q:.2f}', font=(self.font, 10), fill='black')
+      self.canvas.create_text(cx, cy + vertical_bias, text=f'{int(visited_time)}', font=(self.font, 10), fill='black')
 
-
-  def draw_mcts_state(self):
-    if self.cur_mcts_data is None:
-      return
-
-    self.draw_mcts_q_bar()
-
-    best_move_pos = self.cur_mcts_data.best_pos()
-
+  def draw_pieces(self):
     for x in range(self.col_n):
       for y in range(self.row_n):
-        q, visited_time = self.cur_mcts_data.get(row=y, col=x)
+        stone = self.cur_game_state.board.get(Point(row = y + 1, col = x + 1))
+        if stone == Player.black:
+          self.draw_piece(x, y, "black")
+        elif stone == Player.white:
+          self.draw_piece(x, y, "white")
 
-        if visited_time < 5:
-          continue
-
-        if (y, x) == best_move_pos:
-          candidate_color = '#0CE6E6' # HSV: 180 95 90
-          self.draw_piece(x, y, '#5A5A5A', 2)
-          self.draw_piece(x, y, '#262626', 1)
-          alpha = 255
-        else:
-          color_table = [
-                               #   H  S  V
-            (0.1,  '#C02F2A'), #   2 78 75
-            (0.3,  '#DA4939'), #   6 74 85
-            (0.45, '#DD8829'), #  32 81 87
-            (0.5,  '#DACA21'), #  55 85 85
-            (0.55, '#ABDA21'), #  76 85 85
-            (0.7,  '#66DA2C'), # 100 80 85
-            (0.9,  '#249C24'), # 120 77 61
-            (1,    '#1D8026')  # 126 77 50
-          ]
-          candidate_color = color_table[0][1]
-          for upper_bound, color in color_table:
-            if q <= upper_bound:
-              candidate_color = color
-              break
-
-          def compress_f(x):
-            return 1 - 1 / (x + 1)
-
-          alpha = int(255 * (0.5 + 0.5 *compress_f(visited_time / 500)))
-
-        self.draw_semitransparent_mcts_point(x, y, candidate_color, alpha, visited_time, q)
+  def draw_piece(self, x, y, color, expand=0):
+    cx = self.padding + x * self.cell_size
+    cy = self.padding + y * self.cell_size
+    radius = self.cell_size // 2 - 2 + expand
+    self.canvas.create_oval(
+      cx - radius, cy - radius, cx + radius, cy + radius,
+      fill=color, outline=color
+    )
 
   def draw_mcts_q_bar(self):
     if self.cur_mcts_data.win_rate is None:
