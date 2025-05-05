@@ -4,6 +4,8 @@ def main():
   parser = argparse.ArgumentParser()
   parser.add_argument('-m', '--model', type = str, required = True, help = 'root to model')
   parser.add_argument('--batch-size', type = int, default = 128)
+  parser.add_argument('--batch-accumulation', type = int, default = 1,
+                      help = 'equivalent virtual batch size = batch size * batch accumulation')
   # supervisor learning does not requires very large batch size
   parser.add_argument('-d', '--dataset', type = str, required = True, help = 'root to dataset')
   parser.add_argument('--batch-per-test', type = int, default = 100)
@@ -42,6 +44,7 @@ def main():
       ZhuGoEncoder(device = 'cpu'), # prefetched tensors saved on cpu
       debug = True,
     ),
+    batch_accumulation = args.batch_accumulation,
     batch_per_test = args.batch_per_test,
     test_dataloader = BGTFDataLoader(
       args.test_dataset,
