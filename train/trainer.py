@@ -36,12 +36,16 @@ def cross_entropy(target: torch.Tensor, output_logits: torch.Tensor) -> torch.Te
     dim=-1
   ).unsqueeze(1)
 
-def mse(target: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+def scalar_cross_entropy(target: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
   '''p(B, 1), q(B, 1) -> (B, 1)'''
   assert target.shape == output.shape and len(target.shape) == 2 and target.shape[1] == 1, (
     f'improper shape {target.shape=} vs. {output.shape=}'
   )
-  return (target - output) ** 2
+  '''assume -1 <= p, q <= 1, make it (-1, 1) one-hot encoding, return cross entropy'''
+  return -(
+    (1 - target) / 2 * torch.log((1 - output) / 2)
+    + (1 + target) / 2 * torch.log((1 + output) / 2)
+  )
 
 class Trainer:
   def __init__(
@@ -53,7 +57,7 @@ class Trainer:
     batch_per_test: int,
     test_dataloader: BGTFDataLoader | None = None,
     policy_lost_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = cross_entropy,
-    value_lost_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = mse,
+    value_lost_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = scalar_cross_entropy,
     base_lr: float,
     weight_decay: float,
     momentum: float,
