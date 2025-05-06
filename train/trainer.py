@@ -2,6 +2,8 @@ from ai.manager import ModelManager
 from .dataloader import BGTFDataLoader
 from .meta import MetaData
 
+from ai.encoder.zhugo_encoder import ZhuGoEncoder # dirty code, but let's do it for now
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -20,15 +22,8 @@ def ctrl_c_catcher(func: Callable, exit_func: Callable):
     func()
   except KeyboardInterrupt:
     pass
-  except Exception as e:
-    raise e
   finally:
-    while True:
-      try:
-        exit_func()
-        return
-      except KeyboardInterrupt:
-        pass
+    exit_func()
 
 def cross_entropy(target: torch.Tensor, output_logits: torch.Tensor) -> torch.Tensor:
   '''p(B, N), q_logits(B, N) -> (B, 1)'''
@@ -50,23 +45,29 @@ def mse(target: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
 class Trainer:
   def __init__(
     self,
+    *,
     model_manager: ModelManager,
     dataloader: BGTFDataLoader,
+    batch_accumulation: int,
     batch_per_test: int,
     test_dataloader: BGTFDataLoader | None = None,
     policy_lost_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = cross_entropy,
     value_lost_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = mse,
-    base_lr: float = 0.1,
-    weight_decay: float = 1e-4,
-    momentum: float = 0.9,
-    T_max: int = 10000,
-    eta_min: float = 1e-3,
-    policy_loss_weight: float = 0.7,
-    value_loss_weight: float = 0.3,
-    checkpoint_interval_sec: int = 3600,
+    base_lr: float,
+    weight_decay: float,
+    momentum: float,
+    gradient_clip: float,
+    T_max: int,
+    eta_min: float,
+    policy_loss_weight: float,
+    value_loss_weight: float,
+    soft_target_nominal_weight: float,
+    softening_intensity: float,
+    checkpoint_interval_sec: int,
   ):
     self.model_manager: ModelManager = model_manager
     self.dataloader: BGTFDataLoader = dataloader
+    self.batch_accumulation: int = batch_accumulation
     self.batch_per_test: int = batch_per_test
     self.test_dataloader: BGTFDataLoader | None = test_dataloader
     self.policy_lost_fn: Callable = policy_lost_fn
@@ -74,10 +75,13 @@ class Trainer:
     self.base_lr: float = base_lr
     self.weight_decay: float = weight_decay
     self.momentum: float = momentum
+    self.gradient_clip: float = gradient_clip
     self.T_max: int = T_max
     self.eta_min: float = eta_min
     self.policy_loss_weight: float = policy_loss_weight
     self.value_loss_weight: float = value_loss_weight
+    self.soft_target_nominal_weight: float = soft_target_nominal_weight
+    self.softening_intensity: float = softening_intensity
     self.checkpoint_interval_sec: int = checkpoint_interval_sec
 
   def train(self, device = 'cuda' if torch.cuda.is_available() else 'cpu'):
@@ -116,41 +120,80 @@ class Trainer:
 
     last_checkpoint_time = time.time()
 
+    # only for displaying statics
+    accumulated_total_loss: float = 0
+    accumulated_policy_loss: float = 0
+    accumulated_value_loss: float = 0
+
     for inputs, policy_targets, value_targets in self.dataloader:
+      valid_mask = self.get_valid_mask(inputs)
+      policy_targets *= valid_mask # invalid moves does not engage in backward
+
       policy_logits, value_logits = model(inputs)
 
       policy_losses = self.policy_lost_fn(policy_targets, policy_logits)
       value_losses = self.value_lost_fn(value_targets, nn.functional.tanh(value_logits))
+
+      softened_policy_target = policy_targets ** self.softening_intensity
+      softened_policy_target /= softened_policy_target.sum(dim = -1, keepdim = True) + 1e-8
+
+      policy_losses += self.soft_target_nominal_weight * self.policy_lost_fn(softened_policy_target, policy_logits)
+      policy_losses /= (1 + self.soft_target_nominal_weight)
+
       losses = self.policy_loss_weight * policy_losses + self.value_loss_weight * value_losses
 
       loss = torch.mean(losses)
-      optimizer.zero_grad()
-      loss.backward()
-      optimizer.step()
+      backward_loss = loss / self.batch_accumulation
+      backward_loss.backward()
 
-      schedular.step()
-
-      print(
-        f'{"train:":>10}'
-        f'{loss.item():12.3f}'
-        f'{"press Ctrl-C to stop":>30}'
+      self.log_losses(
+        'train', meta,
+        loss.item(),
+        policy_losses.mean().item(),
+        value_losses.mean().item(),
+        writer
       )
 
-      writer.add_scalar('train/batch-loss', loss, meta.batches)
       writer.add_scalar('train/lr', schedular.get_last_lr()[0], meta.batches)
 
-      meta.batches += 1
+      accumulated_total_loss += loss.item() / self.batch_accumulation
+      accumulated_policy_loss += torch.mean(policy_losses).item() / self.batch_accumulation
+      accumulated_value_loss += torch.mean(value_losses).item() / self.batch_accumulation
 
-      if meta.batches % self.batch_per_test != 0:
-        continue
+      if meta.batches > 0 and meta.batches % self.batch_accumulation == 0:
+        nn.utils.clip_grad_norm_(model.parameters(), self.gradient_clip)
+        optimizer.step()
+        optimizer.zero_grad()
+        schedular.step()
 
-      if self.test_dataloader is not None:
-        loss = self.test_model(model)
-        print(
-          f'{"test:":>10}'
-          f'{loss.item():12.3f}'
+        if self.batch_accumulation > 0:
+          self.log_losses(
+            'acc', meta,
+            accumulated_total_loss,
+            accumulated_policy_loss,
+            accumulated_value_loss,
+            writer
+          )
+
+        accumulated_total_loss = 0
+        accumulated_policy_loss = 0
+        accumulated_value_loss = 0
+
+      if self.test_dataloader is not None and meta.batches > 0 and meta.batches % self.batch_per_test == 0:
+        validate_policy_loss, validate_value_loss = self.test_model(model)
+        validate_loss = (
+          self.policy_loss_weight * validate_policy_loss
+          + self.value_loss_weight * validate_value_loss
         )
-        writer.add_scalar('test/loss', loss, meta.batches)
+        self.log_losses(
+          'test', meta,
+          validate_loss.item(),
+          validate_policy_loss.item(),
+          validate_value_loss.item(),
+          writer
+        )
+
+      meta.batches += 1
 
       if time.time() - last_checkpoint_time >= self.checkpoint_interval_sec:
         print('saving checkpoint...')
@@ -159,9 +202,8 @@ class Trainer:
         last_checkpoint_time = time.time()
         print(f'checkpoint saved at {datetime.now().strftime("%H:%M:%S")}')
 
-
-  def test_model(self, model: nn.Module) -> torch.Tensor:
-    '''return loss'''
+  def test_model(self, model: nn.Module) -> tuple[torch.Tensor, torch.Tensor]:
+    '''return policy_loss(1), value_loss(1)'''
     assert self.test_dataloader is not None
     inputs, policies, values = next(iter(self.test_dataloader))
 
@@ -172,15 +214,47 @@ class Trainer:
 
     policy_losses = self.policy_lost_fn(policies, policy_logits)
     value_losses = self.value_lost_fn(values, nn.functional.tanh(value_logits))
-    losses = self.policy_loss_weight * policy_losses + self.value_loss_weight * value_losses
-    loss = torch.mean(losses)
-    return loss
+    return policy_losses.mean(), value_losses.mean()
 
   def save_checkpoint(self, model: nn.Module):
     self.model_manager.save_checkpoint(model)
 
-  def log_histogram(self, model: nn.Module, meta: MetaData, writer: SummaryWriter):
+  @staticmethod
+  def log_losses(
+    tag: str,
+    meta: MetaData,
+    total_loss: float,
+    policy_loss: float,
+    value_loss: float,
+    writer: SummaryWriter,
+  ):
+    print(
+      f'{meta.batches:>8}'
+      f'{f"<{tag}>":>15}'
+      f'{total_loss:12.3f}'
+    )
+    writer.add_scalars('train/total_loss', { tag: total_loss, }, meta.batches)
+    writer.add_scalars('train/policy_loss', { tag: policy_loss, }, meta.batches)
+    writer.add_scalars('train/value_loss', { tag: value_loss, }, meta.batches)
+
+  @staticmethod
+  def log_histogram(model: nn.Module, meta: MetaData, writer: SummaryWriter):
     for name, param in model.named_parameters():
       writer.add_histogram(f'weights/{name}', param, meta.batches)
       if param.grad is not None:
         writer.add_histogram(f'grads/{name}', param.grad, meta.batches)
+
+  @staticmethod
+  def get_valid_mask(inputs: torch.Tensor) -> torch.Tensor:
+    '''
+    inputs(B, C, 19, 19) -> (B, 362)
+    assume inputs is encoded with ZhuGoEncoder
+    '''
+    batch_size = inputs.shape[0]
+    valid_mask = inputs[:, ZhuGoEncoder.VALID_MOVE_OFF, :, :]
+    return torch.cat(
+      (
+        valid_mask.reshape(batch_size, 361),
+        torch.ones(batch_size, 1, device = valid_mask.device)
+      ), dim = 1
+    )
