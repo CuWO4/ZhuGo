@@ -7,6 +7,7 @@ from ai.encoder.zhugo_encoder import ZhuGoEncoder # dirty code, but let's do it 
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torch.cuda.amp as amp
 from torch.utils.tensorboard import SummaryWriter
 from typing import Callable
 import time
@@ -117,6 +118,7 @@ class Trainer:
     schedular = optim.lr_scheduler.CosineAnnealingLR(
       optimizer, T_max = self.T_max, eta_min = self.eta_min
     )
+    scaler = amp.GradScaler()
 
     last_checkpoint_time = time.time()
 
@@ -129,22 +131,24 @@ class Trainer:
       valid_mask = self.get_valid_mask(inputs)
       policy_targets *= valid_mask # invalid moves does not engage in backward
 
-      policy_logits, value_logits = model(inputs)
+      with amp.autocast():
+        policy_logits, value_logits = model(inputs)
 
-      policy_losses = self.policy_lost_fn(policy_targets, policy_logits)
-      value_losses = self.value_lost_fn(value_targets, nn.functional.tanh(value_logits))
+        policy_losses = self.policy_lost_fn(policy_targets, policy_logits)
+        value_losses = self.value_lost_fn(value_targets, nn.functional.tanh(value_logits))
 
-      softened_policy_target = policy_targets ** self.softening_intensity
-      softened_policy_target /= softened_policy_target.sum(dim = -1, keepdim = True) + 1e-8
+        softened_policy_target = policy_targets ** self.softening_intensity
+        softened_policy_target /= softened_policy_target.sum(dim = -1, keepdim = True) + 1e-8
 
-      policy_losses += self.soft_target_nominal_weight * self.policy_lost_fn(softened_policy_target, policy_logits)
-      policy_losses /= (1 + self.soft_target_nominal_weight)
+        policy_losses += self.soft_target_nominal_weight * self.policy_lost_fn(softened_policy_target, policy_logits)
+        policy_losses /= (1 + self.soft_target_nominal_weight)
 
-      losses = self.policy_loss_weight * policy_losses + self.value_loss_weight * value_losses
+        losses = self.policy_loss_weight * policy_losses + self.value_loss_weight * value_losses
 
-      loss = torch.mean(losses)
-      backward_loss = loss / self.batch_accumulation
-      backward_loss.backward()
+        loss = torch.mean(losses)
+        backward_loss = loss / self.batch_accumulation
+
+      scaler.scale(backward_loss).backward()
 
       self.log_losses(
         'train', meta,
@@ -161,8 +165,10 @@ class Trainer:
       accumulated_value_loss += torch.mean(value_losses).item() / self.batch_accumulation
 
       if meta.batches > 0 and meta.batches % self.batch_accumulation == 0:
+        scaler.unscale_(optimizer)
         nn.utils.clip_grad_norm_(model.parameters(), self.gradient_clip)
-        optimizer.step()
+        scaler.step(optimizer)
+        scaler.update()
         optimizer.zero_grad()
         schedular.step()
 
