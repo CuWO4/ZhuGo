@@ -34,6 +34,28 @@ class ResidualConvBlock(nn.Module):
   def forward(self, x):
     return self.model(x) + x
 
+class GlobalBiasBLock(nn.Module):
+  '''(B, C, N, M) -> (B, C, N, M)'''
+  def __init__(self, channel):
+    super(GlobalBiasBLock, self).__init__()
+    self.activate = nn.Sequential(
+      nn.BatchNorm2d(channel),
+      nn.LeakyReLU(),
+    )
+
+    self.linear = nn.Linear(2 * channel, channel)
+
+    nn.init.xavier_normal_(self.linear.weight)
+    nn.init.zeros_(self.linear.bias)
+
+  def forward(self, x: torch.Tensor):
+    y = self.activate(x)
+    plane_means = y.mean(dim = (-2, -1)).flatten(start_dim = 1)
+    plane_maxes = y.amax(dim = (-2, -1)).flatten(start_dim = 1)
+    y = self.linear(torch.cat((plane_means, plane_maxes), dim = 1))
+    y.unsqueeze_(-1).unsqueeze_(-1)
+    return x + y
+
 #
 # nested bottleneck residual network
 # <https://github.com/lightvector/KataGo/blob/master/docs/KataGoMethods.md#nested-bottleneck-residual-nets>
@@ -122,9 +144,14 @@ class ZhuGoSharedResNet(nn.Module):
 
     assert len(residual_channels) == len(residual_depths) and len(residual_depths) > 0
     length = len(residual_channels)
+    total_depth = 0
     residual_layers = []
     for idx, (channel, depth) in enumerate(zip(residual_channels, residual_depths)):
-      residual_layers += [ZhuGoResidualConvBlock(channel) for _ in range(depth)]
+      for _ in range(depth):
+        residual_layers.append(ZhuGoResidualConvBlock(channel))
+        if total_depth % 3 == 2:
+          residual_layers.append(GlobalBiasBLock(channel))
+        total_depth += 1
       if idx < length - 1:
         next_channel = residual_channels[idx + 1]
         residual_layers += [
@@ -163,11 +190,14 @@ class ZhuGoPolicyHead(nn.Module):
   ):
     super(ZhuGoPolicyHead, self).__init__()
 
+    shared_resnet_layers = []
+    for idx in range(policy_residual_depth):
+      shared_resnet_layers.append(ZhuGoResidualConvBlock(bottleneck_channels))
+      if idx % 3 == 0:
+        shared_resnet_layers.append(GlobalBiasBLock(bottleneck_channels))
+
     self.shared = nn.Sequential(
-      *[
-        ZhuGoResidualConvBlock(bottleneck_channels)
-        for _ in range(policy_residual_depth)
-      ],
+      *shared_resnet_layers,
       nn.BatchNorm2d(bottleneck_channels),
       nn.LeakyReLU(),
     )
@@ -211,11 +241,14 @@ class ZhuGoValueHead(nn.Module):
   ):
     super(ZhuGoValueHead, self).__init__()
 
+    shared_resnet_layers = []
+    for idx in range(value_residual_depth):
+      shared_resnet_layers.append(ZhuGoResidualConvBlock(bottleneck_channels))
+      if idx % 3 == 0:
+        shared_resnet_layers.append(GlobalBiasBLock(bottleneck_channels))
+
     self.residual = nn.Sequential(
-      *[
-        ZhuGoResidualConvBlock(bottleneck_channels)
-        for _ in range(value_residual_depth)
-      ],
+      *shared_resnet_layers,
       nn.BatchNorm2d(bottleneck_channels),
       nn.LeakyReLU(),
     )
