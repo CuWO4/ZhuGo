@@ -42,9 +42,10 @@ def scalar_cross_entropy(target: torch.Tensor, output: torch.Tensor) -> torch.Te
     f'improper shape {target.shape=} vs. {output.shape=}'
   )
   '''assume -1 <= p, q <= 1, make it (-1, 1) one-hot encoding, return cross entropy'''
+  assert torch.all((output >= -1) & (output <= 1))
   return -(
-    (1 - target) / 2 * torch.log((1 - output) / 2)
-    + (1 + target) / 2 * torch.log((1 + output) / 2)
+    (1 - target) / 2 * torch.log((1 - output) / 2 + 1e-5)
+    + (1 + target) / 2 * torch.log((1 + output) / 2 + 1e-5)
   )
 
 class Trainer:
