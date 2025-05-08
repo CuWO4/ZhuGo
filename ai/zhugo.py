@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
-import math
-from typing import Callable
+from torch.utils.checkpoint import checkpoint
 
 __all__ = [
   'ZhuGo',
@@ -32,7 +31,7 @@ class ResidualConvBlock(nn.Module):
     kaiming_init_sequential(self.model)
 
   def forward(self, x):
-    return self.model(x) + x
+    return checkpoint(self.model, x, use_reentrant = False) + x
 
 class GlobalBiasBLock(nn.Module):
   '''(B, C, N, M) -> (B, C, N, M)'''
@@ -49,10 +48,10 @@ class GlobalBiasBLock(nn.Module):
     nn.init.zeros_(self.linear.bias)
 
   def forward(self, x: torch.Tensor):
-    y = self.activate(x)
+    y = checkpoint(self.activate, x, use_reentrant = False)
     plane_means = y.mean(dim = (-2, -1)).flatten(start_dim = 1)
     plane_maxes = y.amax(dim = (-2, -1)).flatten(start_dim = 1)
-    y = self.linear(torch.cat((plane_means, plane_maxes), dim = 1))
+    y = checkpoint(self.linear, torch.cat((plane_means, plane_maxes), dim = 1), use_reentrant = False)
     y.unsqueeze_(-1).unsqueeze_(-1)
     return x + y
 
@@ -126,9 +125,9 @@ class ZhuGoResidualConvBlock(nn.Module):
     kaiming_init_sequential(self.decoder_conv1x1)
 
   def forward(self, x):
-    out = self.encoder_conv1x1(x)
+    out = checkpoint(self.encoder_conv1x1, x, use_reentrant = False)
     out = self.inner_residual_blocks(out)
-    out = self.decoder_conv1x1(out) + x
+    out = checkpoint(self.decoder_conv1x1, out, use_reentrant = False) + x
     return out
 
 class ZhuGoSharedResNet(nn.Module):
@@ -228,7 +227,10 @@ class ZhuGoPolicyHead(nn.Module):
 
   def forward(self, x):
     out = self.shared(x)
-    return torch.cat((self.move_model(out), self.pass_model(out)), dim = 1)
+    return torch.cat((
+      checkpoint(self.move_model, out, use_reentrant = False),
+      checkpoint(self.pass_model, out, use_reentrant = False)
+    ), dim = 1)
 
 class ZhuGoValueHead(nn.Module):
   '''(B, C, N, M) -> (B, 1)'''
@@ -285,7 +287,10 @@ class ZhuGoValueHead(nn.Module):
 
   def forward(self, x):
     out = self.residual(x)
-    out = torch.cat([self.flatten1(out), self.flatten2(out)], dim=1)
+    out = torch.cat((
+      checkpoint(self.flatten1, out, use_reentrant = False),
+      checkpoint(self.flatten2, out, use_reentrant = False)
+    ), dim=1)
     out = self.dense(out)
     return out
 
