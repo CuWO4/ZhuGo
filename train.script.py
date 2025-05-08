@@ -11,6 +11,8 @@ def main():
   parser.add_argument('--batch-per-test', type = int, default = 100)
   parser.add_argument('--test-dataset', type = str, help = 'root to test dataset. if not given, '
                       'test phase is skipped')
+  parser.add_argument('--prefetch-batch', type = int, default = 300)
+  parser.add_argument('--test-prefetch-batch', type = int, default = 20)
   parser.add_argument('--lr', type = float, default = 0.1, help = 'base lr')
   parser.add_argument('--weight-decay', type = float, default = 1e-4)
   parser.add_argument('--momentum', type = float, default = 0.9)
@@ -43,6 +45,7 @@ def main():
       args.batch_size,
       ZhuGoEncoder(device = 'cpu'), # prefetched tensors saved on cpu
       debug = True,
+      prefetch_batch = args.prefetch_batch,
     ),
     batch_accumulation = args.batch_accumulation,
     batch_per_test = args.batch_per_test,
@@ -50,6 +53,7 @@ def main():
       args.test_dataset,
       args.batch_size,
       ZhuGoEncoder(device = 'cpu'), # prefetched tensors saved on cpu
+      prefetch_batch = args.test_prefetch_batch,
     )
       if args.test_dataset is not None
       else None,

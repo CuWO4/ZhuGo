@@ -26,15 +26,18 @@ def ctrl_c_catcher(func: Callable, exit_func: Callable):
   finally:
     exit_func()
 
+MAX_LOSS_VALUE = 30 # loss more than this will be clamped, to avoid extreme gradient
+
 def cross_entropy(target: torch.Tensor, output_logits: torch.Tensor) -> torch.Tensor:
   '''p(B, N), q_logits(B, N) -> (B, 1)'''
   assert target.shape == output_logits.shape and len(target.shape) == 2, (
     f'improper shape {target.shape=} vs. {output_logits.shape=}'
   )
-  return -torch.sum(
+  losses = -torch.sum(
     target * nn.functional.log_softmax(output_logits, dim=-1),
     dim=-1
   ).unsqueeze(1)
+  return losses.clamp(0, MAX_LOSS_VALUE)
 
 def scalar_cross_entropy(target: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
   '''p(B, 1), q(B, 1) -> (B, 1)'''
@@ -43,10 +46,11 @@ def scalar_cross_entropy(target: torch.Tensor, output: torch.Tensor) -> torch.Te
   )
   '''assume -1 <= p, q <= 1, make it (-1, 1) one-hot encoding, return cross entropy'''
   assert torch.all((output >= -1) & (output <= 1))
-  return -(
+  losses = -(
     (1 - target) / 2 * torch.log((1 - output) / 2 + 1e-5)
     + (1 + target) / 2 * torch.log((1 + output) / 2 + 1e-5)
   )
+  return losses.clamp(0, MAX_LOSS_VALUE)
 
 class Trainer:
   def __init__(
@@ -132,6 +136,8 @@ class Trainer:
     accumulated_policy_loss: float = 0
     accumulated_value_loss: float = 0
 
+    begin_batches = meta.batches
+
     for inputs, policy_targets, value_targets in self.dataloader:
       valid_mask = self.get_valid_mask(inputs)
       policy_targets *= valid_mask # invalid moves does not engage in backward
@@ -169,7 +175,10 @@ class Trainer:
       accumulated_policy_loss += torch.mean(policy_losses).item() / self.batch_accumulation
       accumulated_value_loss += torch.mean(value_losses).item() / self.batch_accumulation
 
-      if meta.batches > 0 and meta.batches % self.batch_accumulation == 0:
+      if (
+        meta.batches - begin_batches > 0 
+        and (meta.batches - begin_batches) % self.batch_accumulation == 0
+      ):
         scaler.unscale_(optimizer)
         nn.utils.clip_grad_norm_(model.parameters(), self.gradient_clip)
         scaler.step(optimizer)
@@ -190,7 +199,11 @@ class Trainer:
         accumulated_policy_loss = 0
         accumulated_value_loss = 0
 
-      if self.test_dataloader is not None and meta.batches > 0 and meta.batches % self.batch_per_test == 0:
+      if (
+        self.test_dataloader is not None 
+        and meta.batches - begin_batches > 0 
+        and (meta.batches - begin_batches) % self.batch_per_test == 0
+      ):
         validate_policy_loss, validate_value_loss = self.test_model(model)
         validate_loss = (
           self.policy_loss_weight * validate_policy_loss
