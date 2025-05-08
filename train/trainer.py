@@ -136,6 +136,8 @@ class Trainer:
     accumulated_policy_loss: float = 0
     accumulated_value_loss: float = 0
 
+    begin_batches = meta.batches
+
     for inputs, policy_targets, value_targets in self.dataloader:
       valid_mask = self.get_valid_mask(inputs)
       policy_targets *= valid_mask # invalid moves does not engage in backward
@@ -173,7 +175,10 @@ class Trainer:
       accumulated_policy_loss += torch.mean(policy_losses).item() / self.batch_accumulation
       accumulated_value_loss += torch.mean(value_losses).item() / self.batch_accumulation
 
-      if meta.batches > 0 and meta.batches % self.batch_accumulation == 0:
+      if (
+        meta.batches - begin_batches > 0 
+        and (meta.batches - begin_batches) % self.batch_accumulation == 0
+      ):
         scaler.unscale_(optimizer)
         nn.utils.clip_grad_norm_(model.parameters(), self.gradient_clip)
         scaler.step(optimizer)
@@ -194,7 +199,11 @@ class Trainer:
         accumulated_policy_loss = 0
         accumulated_value_loss = 0
 
-      if self.test_dataloader is not None and meta.batches > 0 and meta.batches % self.batch_per_test == 0:
+      if (
+        self.test_dataloader is not None 
+        and meta.batches - begin_batches > 0 
+        and (meta.batches - begin_batches) % self.batch_per_test == 0
+      ):
         validate_policy_loss, validate_value_loss = self.test_model(model)
         validate_loss = (
           self.policy_loss_weight * validate_policy_loss
