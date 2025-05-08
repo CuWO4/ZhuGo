@@ -176,8 +176,8 @@ class Trainer:
       accumulated_value_loss += torch.mean(value_losses).item() / self.batch_accumulation
 
       if (
-        meta.batches - begin_batches > 0 
-        and (meta.batches - begin_batches) % self.batch_accumulation == 0
+        meta.batches - begin_batches > 0
+        and (meta.batches - begin_batches) % self.batch_accumulation == self.batch_accumulation - 1
       ):
         scaler.unscale_(optimizer)
         nn.utils.clip_grad_norm_(model.parameters(), self.gradient_clip)
@@ -200,9 +200,9 @@ class Trainer:
         accumulated_value_loss = 0
 
       if (
-        self.test_dataloader is not None 
-        and meta.batches - begin_batches > 0 
-        and (meta.batches - begin_batches) % self.batch_per_test == 0
+        self.test_dataloader is not None
+        and meta.batches - begin_batches > 0
+        and (meta.batches - begin_batches) % self.batch_per_test == self.batch_per_test - 1
       ):
         validate_policy_loss, validate_value_loss = self.test_model(model)
         validate_loss = (
