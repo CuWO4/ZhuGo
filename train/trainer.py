@@ -66,8 +66,6 @@ class Trainer:
     policy_lost_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = cross_entropy,
     value_lost_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = scalar_cross_entropy,
     gradient_clip: float,
-    T_max: int,
-    eta_min: float,
     policy_loss_weight: float,
     value_loss_weight: float,
     soft_target_nominal_weight: float,
@@ -83,8 +81,6 @@ class Trainer:
     self.policy_lost_fn: Callable = policy_lost_fn
     self.value_lost_fn: Callable = value_lost_fn
     self.gradient_clip: float = gradient_clip
-    self.T_max: int = T_max
-    self.eta_min: float = eta_min
     self.policy_loss_weight: float = policy_loss_weight
     self.value_loss_weight: float = value_loss_weight
     self.soft_target_nominal_weight: float = soft_target_nominal_weight
@@ -117,9 +113,6 @@ class Trainer:
       )
 
   def train_body(self, model: nn.Module, optimizer: optim.Optimizer, meta: MetaData, writer: SummaryWriter):
-    schedular = optim.lr_scheduler.CosineAnnealingLR(
-      optimizer, T_max = self.T_max, eta_min = self.eta_min
-    )
     scaler = amp.GradScaler()
 
     last_checkpoint_time = time.time()
@@ -162,8 +155,6 @@ class Trainer:
         writer
       )
 
-      writer.add_scalar('train/lr', schedular.get_last_lr()[0], meta.batches)
-
       accumulated_total_loss += loss.item() / self.batch_accumulation
       accumulated_policy_loss += torch.mean(policy_losses).item() / self.batch_accumulation
       accumulated_value_loss += torch.mean(value_losses).item() / self.batch_accumulation
@@ -177,7 +168,6 @@ class Trainer:
         scaler.step(optimizer)
         scaler.update()
         optimizer.zero_grad()
-        schedular.step()
 
         if self.batch_accumulation > 0:
           self.log_losses(

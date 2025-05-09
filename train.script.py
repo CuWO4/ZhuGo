@@ -17,8 +17,6 @@ def main():
   parser.add_argument('--weight-decay', type = float, default = 1e-4)
   parser.add_argument('--momentum', type = float, default = 0.9)
   parser.add_argument('--gradient-clip', type = float, default = 2.0)
-  parser.add_argument('--T_max', type = int, default = 10000, help = 'T_max of cosine lr schedular')
-  parser.add_argument('--eta_min', type = float, default = 1e-4, help = 'least lr')
   parser.add_argument('--policy-loss-weight', type = float, default = 0.85)
   parser.add_argument('--value-loss-weight', type = float, default = 0.03)
   parser.add_argument('--soft-target-nominal-weight', type = float, default = 2.0,
@@ -68,8 +66,6 @@ def main():
       if args.test_dataset is not None
       else None,
     gradient_clip = args.gradient_clip,
-    T_max = args.T_max,
-    eta_min = args.eta_min,
     policy_loss_weight = args.policy_loss_weight,
     value_loss_weight = args.value_loss_weight,
     soft_target_nominal_weight = args.soft_target_nominal_weight,
