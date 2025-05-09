@@ -1,5 +1,6 @@
 from ai.manager import ModelManager
 from .dataloader import BGTFDataLoader
+from .optimizer_manager import OptimizerManager
 from .meta import MetaData
 
 from ai.encoder.zhugo_encoder import ZhuGoEncoder # dirty code, but let's do it for now
@@ -57,15 +58,13 @@ class Trainer:
     self,
     *,
     model_manager: ModelManager,
+    optimizer_manager: OptimizerManager,
     dataloader: BGTFDataLoader,
     batch_accumulation: int,
     batch_per_test: int,
     test_dataloader: BGTFDataLoader | None = None,
     policy_lost_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = cross_entropy,
     value_lost_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = scalar_cross_entropy,
-    base_lr: float,
-    weight_decay: float,
-    momentum: float,
     gradient_clip: float,
     T_max: int,
     eta_min: float,
@@ -76,15 +75,13 @@ class Trainer:
     checkpoint_interval_sec: int,
   ):
     self.model_manager: ModelManager = model_manager
+    self.optimizer_manager: OptimizerManager = optimizer_manager
     self.dataloader: BGTFDataLoader = dataloader
     self.batch_accumulation: int = batch_accumulation
     self.batch_per_test: int = batch_per_test
     self.test_dataloader: BGTFDataLoader | None = test_dataloader
     self.policy_lost_fn: Callable = policy_lost_fn
     self.value_lost_fn: Callable = value_lost_fn
-    self.base_lr: float = base_lr
-    self.weight_decay: float = weight_decay
-    self.momentum: float = momentum
     self.gradient_clip: float = gradient_clip
     self.T_max: int = T_max
     self.eta_min: float = eta_min
@@ -105,25 +102,21 @@ class Trainer:
     with self.model_manager.load_summary_writer() as writer:
       model = self.model_manager.load_model(device = device)
       model.train()
+      optimizer = self.optimizer_manager.load_optimizer(model.parameters())
       meta = self.model_manager.load_meta()
 
       def stop_handling():
         print('stopped. saving...')
         self.model_manager.save_model(model)
         self.model_manager.save_meta(meta)
+        self.optimizer_manager.save_optimizer(optimizer)
 
       ctrl_c_catcher(
-        lambda: self.train_body(model, meta, writer),
+        lambda: self.train_body(model, optimizer, meta, writer),
         stop_handling
       )
 
-  def train_body(self, model: nn.Module, meta: MetaData, writer: SummaryWriter):
-    optimizer = optim.SGD(
-      model.parameters(),
-      lr = self.base_lr,
-      weight_decay = self.weight_decay,
-      momentum = self.momentum
-    )
+  def train_body(self, model: nn.Module, optimizer: optim.Optimizer, meta: MetaData, writer: SummaryWriter):
     schedular = optim.lr_scheduler.CosineAnnealingLR(
       optimizer, T_max = self.T_max, eta_min = self.eta_min
     )
