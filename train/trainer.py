@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.cuda.amp as amp
 from torch.utils.tensorboard import SummaryWriter
+import math
 from typing import Callable, TypeVar, Optional, Iterable
 import time
 from datetime import datetime
@@ -47,6 +48,9 @@ def compute_grad_l2_norm_mean(params: Iterable[nn.Parameter]) -> float:
     if param.grad is not None:
       sum += param.grad.norm(2).item()
       count += 1
+  if count == 0:
+    print('<compute_grad_l2_norm_mean> runtime warning: count = 0')
+    return 0.0
   return sum / count
 
 MAX_LOSS_VALUE = 30 # loss more than this will be clamped, to avoid extreme gradient
@@ -203,17 +207,24 @@ class Trainer:
           assert isinstance(model, ZhuGo)
           policy_batch_grad_scale = compute_grad_l2_norm_mean(model.policy.shared.parameters())
           value_batch_grad_scale = compute_grad_l2_norm_mean(model.value.residual.parameters())
+          batch_grad_scale_factor = policy_batch_grad_scale / value_batch_grad_scale
 
-          if value_batch_grad_scale == 0:
-            print(f'runtime warning: {value_batch_grad_scale=}, set to policy_batch_grad_scale')
-            value_batch_grad_scale = policy_batch_grad_scale
+          if math.isnan(batch_grad_scale_factor) or math.isinf(batch_grad_scale_factor):
+            print('runtime warning: invalid batch_gard_scale_factor, '
+                  f'{policy_batch_grad_scale=}, {value_batch_grad_scale=}, update skipped')
+          else:
+            # multiply value_loss_weight here to implicitly contains value_loss_weight
+            # otherwise, explicitly multiply value_loss_weight to loss, will effect gradient
+            # while the gradient difference will be caught by factor, then align it,
+            # which means any value_loss_weight will equivalent to value_loss_weight = 1.0
+            policy_to_value_grad_scale_factor.update(
+              self.value_loss_weight * batch_grad_scale_factor
+            )
 
-          # multiply value_loss_weight here to implicitly contains value_loss_weight
-          # otherwise, explicitly multiply value_loss_weight to loss, will effect gradient
-          # while the gradient difference will be caught by factor, then align it,
-          # which means any value_loss_weight will equivalent to value_loss_weight = 1.0
-          policy_to_value_grad_scale_factor.update(
-            self.value_loss_weight * policy_batch_grad_scale / value_batch_grad_scale
+          writer.add_scalar(
+            'policy_to_value_gradient_scale_factor',
+            policy_to_value_grad_scale_factor.get(),
+            meta.batches
           )
 
         nn.utils.clip_grad_norm_(model.parameters(), self.gradient_clip)
