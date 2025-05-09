@@ -48,7 +48,7 @@ python create.py -c CONF -p PATH
 执行
 
 ```shell
-python -O ./train.script.py -m [MODEL ROOT] -d [DATASET ROOT]
+python -O ./train.script.py -m [MODEL ROOT] -d [DATASET ROOT] -c conf/train/default.json
 ```
 
 以训练, 使用
