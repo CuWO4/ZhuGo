@@ -17,7 +17,7 @@ def kaiming_init_sequential(sequential: nn.Sequential, nonlinearity = 'leaky_rel
 
 class ResidualConvBlock(nn.Module):
   '''(B, C, N, M) -> (B, C, N, M)'''
-  def __init__(self, channels):
+  def __init__(self, channels, *, checkpoint: bool):
     super(ResidualConvBlock, self).__init__()
     self.model = nn.Sequential(
       nn.BatchNorm2d(channels),
@@ -30,12 +30,14 @@ class ResidualConvBlock(nn.Module):
 
     kaiming_init_sequential(self.model)
 
+    self.checkpoint = checkpoint
+
   def forward(self, x):
-    return checkpoint(self.model, x, use_reentrant = False) + x
+    return checkpoint(self.model, x, use_reentrant = False) + x if self.checkpoint else self.model(x) + x
 
 class GlobalBiasBLock(nn.Module):
   '''(B, C, N, M) -> (B, C, N, M)'''
-  def __init__(self, channel):
+  def __init__(self, channel, *, checkpoint: bool):
     super(GlobalBiasBLock, self).__init__()
     self.activate = nn.Sequential(
       nn.BatchNorm2d(channel),
@@ -47,11 +49,14 @@ class GlobalBiasBLock(nn.Module):
     nn.init.xavier_normal_(self.linear.weight)
     nn.init.zeros_(self.linear.bias)
 
+    self.checkpoint = checkpoint
+
   def forward(self, x: torch.Tensor):
-    y = checkpoint(self.activate, x, use_reentrant = False)
+    y = checkpoint(self.activate, x, use_reentrant = False) if self.checkpoint else self.activate(x)
     plane_means = y.mean(dim = (-2, -1)).flatten(start_dim = 1)
     plane_maxes = y.amax(dim = (-2, -1)).flatten(start_dim = 1)
-    y = checkpoint(self.linear, torch.cat((plane_means, plane_maxes), dim = 1), use_reentrant = False)
+    y = checkpoint(self.linear, torch.cat((plane_means, plane_maxes), dim = 1), use_reentrant = False) \
+      if self.checkpoint else self.linear(torch.cat((plane_means, plane_maxes), dim = 1))
     y.unsqueeze_(-1).unsqueeze_(-1)
     return x + y
 
@@ -99,7 +104,7 @@ class GlobalBiasBLock(nn.Module):
 
 class ZhuGoResidualConvBlock(nn.Module):
   '''(B, C, N, M) -> (B, C, N, M)'''
-  def __init__(self, channels):
+  def __init__(self, channels, *, checkpoint: bool):
     super(ZhuGoResidualConvBlock, self).__init__()
 
     inner_channels = channels // 2
@@ -111,8 +116,8 @@ class ZhuGoResidualConvBlock(nn.Module):
     )
 
     self.inner_residual_blocks = nn.Sequential(
-      ResidualConvBlock(inner_channels),
-      ResidualConvBlock(inner_channels),
+      ResidualConvBlock(inner_channels, checkpoint = checkpoint),
+      ResidualConvBlock(inner_channels, checkpoint = checkpoint),
     )
 
     self.decoder_conv1x1 = nn.Sequential(
@@ -124,10 +129,14 @@ class ZhuGoResidualConvBlock(nn.Module):
     kaiming_init_sequential(self.encoder_conv1x1)
     kaiming_init_sequential(self.decoder_conv1x1)
 
+    self.checkpoint = checkpoint
+
   def forward(self, x):
-    out = checkpoint(self.encoder_conv1x1, x, use_reentrant = False)
+    out = checkpoint(self.encoder_conv1x1, x, use_reentrant = False) \
+      if self.checkpoint else self.encoder_conv1x1(x)
     out = self.inner_residual_blocks(out)
-    out = checkpoint(self.decoder_conv1x1, out, use_reentrant = False) + x
+    out = checkpoint(self.decoder_conv1x1, out, use_reentrant = False) + x \
+      if self.checkpoint else self.decoder_conv1x1(out) + x
     return out
 
 class ZhuGoSharedResNet(nn.Module):
@@ -138,6 +147,8 @@ class ZhuGoSharedResNet(nn.Module):
     residual_channels: int,
     residual_depths: int,
     bottleneck_channels: int,
+    *,
+    checkpoint: bool
   ):
     super(ZhuGoSharedResNet, self).__init__()
 
@@ -147,9 +158,9 @@ class ZhuGoSharedResNet(nn.Module):
     residual_layers = []
     for idx, (channel, depth) in enumerate(zip(residual_channels, residual_depths)):
       for _ in range(depth):
-        residual_layers.append(ZhuGoResidualConvBlock(channel))
+        residual_layers.append(ZhuGoResidualConvBlock(channel, checkpoint = checkpoint))
         if total_depth % 3 == 2:
-          residual_layers.append(GlobalBiasBLock(channel))
+          residual_layers.append(GlobalBiasBLock(channel, checkpoint = checkpoint))
         total_depth += 1
       if idx < length - 1:
         next_channel = residual_channels[idx + 1]
@@ -185,15 +196,17 @@ class ZhuGoPolicyHead(nn.Module):
     self,
     board_size: tuple[int, int],
     bottleneck_channels: int,
-    policy_residual_depth: int
+    policy_residual_depth: int,
+    *,
+    checkpoint: bool
   ):
     super(ZhuGoPolicyHead, self).__init__()
 
     shared_resnet_layers = []
     for idx in range(policy_residual_depth):
-      shared_resnet_layers.append(ZhuGoResidualConvBlock(bottleneck_channels))
+      shared_resnet_layers.append(ZhuGoResidualConvBlock(bottleneck_channels, checkpoint = checkpoint))
       if idx % 3 == 0:
-        shared_resnet_layers.append(GlobalBiasBLock(bottleneck_channels))
+        shared_resnet_layers.append(GlobalBiasBLock(bottleneck_channels, checkpoint = checkpoint))
 
     self.shared = nn.Sequential(
       *shared_resnet_layers,
@@ -225,11 +238,13 @@ class ZhuGoPolicyHead(nn.Module):
     nn.init.xavier_normal_(self.move_model[-2].weight)
     nn.init.xavier_normal_(self.pass_model[-1].weight)
 
+    self.checkpoint = checkpoint
+
   def forward(self, x):
     out = self.shared(x)
     return torch.cat((
-      checkpoint(self.move_model, out, use_reentrant = False),
-      checkpoint(self.pass_model, out, use_reentrant = False)
+      checkpoint(self.move_model, out, use_reentrant = False) if self.checkpoint else self.move_model(out),
+      checkpoint(self.pass_model, out, use_reentrant = False) if self.checkpoint else self.pass_model(out)
     ), dim = 1)
 
 class ZhuGoValueHead(nn.Module):
@@ -239,15 +254,17 @@ class ZhuGoValueHead(nn.Module):
     board_size: tuple[int, int],
     bottleneck_channels: int,
     value_residual_depth: int,
-    value_middle_width: int
+    value_middle_width: int,
+    *,
+    checkpoint: bool
   ):
     super(ZhuGoValueHead, self).__init__()
 
     shared_resnet_layers = []
     for idx in range(value_residual_depth):
-      shared_resnet_layers.append(ZhuGoResidualConvBlock(bottleneck_channels))
+      shared_resnet_layers.append(ZhuGoResidualConvBlock(bottleneck_channels, checkpoint = checkpoint))
       if idx % 3 == 0:
-        shared_resnet_layers.append(GlobalBiasBLock(bottleneck_channels))
+        shared_resnet_layers.append(GlobalBiasBLock(bottleneck_channels, checkpoint = checkpoint))
 
     self.residual = nn.Sequential(
       *shared_resnet_layers,
@@ -285,11 +302,13 @@ class ZhuGoValueHead(nn.Module):
     nn.init.xavier_normal_(self.dense[-1].weight)
     nn.init.zeros_(self.dense[-1].bias)
 
+    self.checkpoint = checkpoint
+
   def forward(self, x):
     out = self.residual(x)
     out = torch.cat((
-      checkpoint(self.flatten1, out, use_reentrant = False),
-      checkpoint(self.flatten2, out, use_reentrant = False)
+      checkpoint(self.flatten1, out, use_reentrant = False) if self.checkpoint else self.flatten1(out),
+      checkpoint(self.flatten2, out, use_reentrant = False) if self.checkpoint else self.flatten2(out)
     ), dim=1)
     out = self.dense(out)
     return out
@@ -310,15 +329,22 @@ class ZhuGo(nn.Module):
     bottleneck_channels: int,
     policy_residual_depth: int,
     value_residual_depth: int,
-    value_middle_width: int
+    value_middle_width: int,
+    checkpoint: bool = True
   ):
     super(ZhuGo, self).__init__()
 
-    self.shared = ZhuGoSharedResNet(input_channels, residual_channels, residual_depths, bottleneck_channels)
+    self.shared = ZhuGoSharedResNet(
+      input_channels, residual_channels, residual_depths, bottleneck_channels, checkpoint = checkpoint
+    )
 
-    self.policy = ZhuGoPolicyHead(board_size, bottleneck_channels, policy_residual_depth)
+    self.policy = ZhuGoPolicyHead(
+      board_size, bottleneck_channels, policy_residual_depth, checkpoint = checkpoint
+    )
 
-    self.value = ZhuGoValueHead(board_size, bottleneck_channels, value_residual_depth, value_middle_width)
+    self.value = ZhuGoValueHead(
+      board_size, bottleneck_channels, value_residual_depth, value_middle_width, checkpoint = checkpoint
+    )
 
   def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     shared = self.shared(x)
