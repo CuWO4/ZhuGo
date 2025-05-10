@@ -84,6 +84,7 @@ class TkRenderer:
     self.mcts_connection: conn.Connection = mcts_connection
     self.cur_game_state: GameState | None = None
     self.cur_mcts_data: MCTSData | None = None
+    self.last_move_pos: tuple[int, int] | None = None # 0-based
     self.refresh_ms: int = 100
 
     self.row_n: int = row_n
@@ -132,6 +133,14 @@ class TkRenderer:
     def check_update():
       while self.game_state_connection.poll():
         self.cur_game_state = self.game_state_connection.recv()
+      if (last_move := self.cur_game_state.last_move) is not None:
+        if last_move.is_pass or last_move.is_resign:
+          self.last_move_pos = None
+        else:
+          self.last_move_pos = (
+            last_move.point.col - 1,
+            last_move.point.row - 1
+          )
 
       while self.mcts_connection.poll():
         self.cur_mcts_data = self.mcts_connection.recv()
@@ -331,18 +340,30 @@ class TkRenderer:
     for x in range(self.col_n):
       for y in range(self.row_n):
         stone = self.cur_game_state.board.get(Point(row = y + 1, col = x + 1))
-        if stone == Player.black:
-          self.draw_piece(x, y, "black")
-        elif stone == Player.white:
-          self.draw_piece(x, y, "white")
+        if stone is None: continue
+        color = 'black' if stone == Player.black else 'white'
+        self.draw_piece(x, y, color)
+        if (x, y) == self.last_move_pos:
+          opposite_color = 'white' if stone == Player.black else 'black'
+          self.draw_last_move_mark(x, y, color, opposite_color)
 
-  def draw_piece(self, x, y, color, expand=0):
+  def draw_piece(self, x, y, color, expand = 0):
     cx = self.padding + x * self.cell_size
     cy = self.padding + y * self.cell_size
     radius = self.cell_size // 2 - 2 + expand
     self.canvas.create_oval(
       cx - radius, cy - radius, cx + radius, cy + radius,
-      fill=color, outline=color
+      fill = color, outline = color
+    )
+
+  def draw_last_move_mark(self, x, y, color, opposite_color):
+    cx = self.padding + x * self.cell_size
+    cy = self.padding + y * self.cell_size
+    radius = self.cell_size * 7 // 24
+    width = self.cell_size // 12
+    self.canvas.create_oval(
+      cx - radius, cy - radius, cx + radius, cy + radius,
+      width = width, fill = color, outline = opposite_color
     )
 
   def draw_mcts_q_bar(self):
