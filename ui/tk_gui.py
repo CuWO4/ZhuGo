@@ -196,14 +196,17 @@ class TkRenderer:
   def draw_star_points(self):
     star_positions = self.get_star_positions()
     for x, y in star_positions:
-      cx = self.padding + x * self.cell_size
-      cy = self.padding + y * self.cell_size
-      radius = 3
-      self.canvas.create_oval(
-        cx - radius, cy - radius, cx + radius, cy + radius,
-        fill="black"
-      )
+      self.draw_star_point(x, y, '#000000')
 
+  def draw_star_point(self, x: int, y: int, color: str):
+    cx = self.padding + x * self.cell_size
+    cy = self.padding + y * self.cell_size
+    radius = 3
+    self.canvas.create_oval(
+      cx - radius, cy - radius, cx + radius, cy + radius, fill = color, outline = color
+    )
+
+  # 0-based
   def get_star_positions(self):
     if self.row_n == self.col_n == 19:
       points = [3, 9, 15]
@@ -297,6 +300,8 @@ class TkRenderer:
     color = cal_transparent(self.background_color, color, alpha)
     line_color = cal_transparent('#000000', color, alpha)
     self.draw_piece(x, y, color)
+    if (x, y) in self.get_star_positions():
+      self.draw_star_point(x, y, line_color)
 
     cx = self.padding + x * self.cell_size
     cy = self.padding + y * self.cell_size
