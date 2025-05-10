@@ -137,8 +137,11 @@ class TkRenderer:
     self.root.bind("<Tab>", self.on_tab)
 
     def check_update():
+      changed = False
+
       while self.game_state_connection.poll():
         self.cur_game_state = self.game_state_connection.recv()
+        changed = True
       if (last_move := self.cur_game_state.last_move) is not None:
         if last_move.is_pass or last_move.is_resign:
           self.last_move_pos = None
@@ -150,8 +153,10 @@ class TkRenderer:
 
       while self.mcts_connection.poll():
         self.cur_mcts_data = self.mcts_connection.recv()
+        changed = True
 
-      self.draw_board()
+      if changed:
+        self.draw_board()
 
       self.root.after(self.refresh_ms, check_update)
 
