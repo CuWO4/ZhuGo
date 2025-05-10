@@ -73,8 +73,8 @@ class TkRenderer:
     move_connection: conn.Connection,
     mcts_connection: conn.Connection,
     row_n: int, col_n: int,
-    cell_size: int=40,
-    padding: int=60,
+    cell_size: int = 40,
+    padding: int = 60,
     background_color: str = '#CDAC6A',
     winning_rate_bar_height: int = 25,
     font: str = 'Consolas'
@@ -104,25 +104,31 @@ class TkRenderer:
     self.root.title("ZhuGo")
     self.canvas: tk.Canvas = tk.Canvas(
       self.root,
-      width=self.window_w,
-      height=self.window_h + padding,
-      bd=0,
-      highlightthickness=0,
-      bg=self.background_color
+      width = self.window_w,
+      height = self.window_h + padding,
+      bd = 0,
+      highlightthickness = 0,
+      bg = self.background_color
     )
     self.canvas.pack()
 
     self.mouse_hover_pos: tuple[int] | None = None
 
     # Add buttons for Pass, Resign and Undo
-    self.pass_turn_button: tk.Button = tk.Button(self.root, text="Pass", command=self.on_pass_turn_button)
-    self.pass_turn_button.pack(side=tk.LEFT, padx=10, pady=10)
+    self.pass_turn_button: tk.Button = tk.Button(
+      self.root, text = "Pass", command = self.on_pass_turn_button
+    )
+    self.pass_turn_button.pack(side = tk.LEFT, padx = 10, pady = 10)
 
-    self.resign_button: tk.Button = tk.Button(self.root, text="Resign", command=self.on_resign_button)
-    self.resign_button.pack(side=tk.LEFT, padx=10, pady=10)
+    self.resign_button: tk.Button = tk.Button(
+      self.root, text = "Resign", command = self.on_resign_button
+    )
+    self.resign_button.pack(side = tk.LEFT, padx = 10, pady = 10)
 
-    self.undo_button: tk.Button = tk.Button(self.root, text='Undo', command=self.on_undo_botton)
-    self.undo_button.pack(side=tk.LEFT, padx=10, pady=10)
+    self.undo_button: tk.Button = tk.Button(
+      self.root, text = 'Undo', command = self.on_undo_botton
+    )
+    self.undo_button.pack(side = tk.LEFT, padx = 10, pady = 10)
 
     self.canvas.bind("<Button-1>", self.on_click)
     self.canvas.bind("<Motion>", self.on_mouse_move)
@@ -179,7 +185,7 @@ class TkRenderer:
     cy = self.window_h
     self.canvas.create_oval(
       cx - radius, cy - radius, cx + radius, cy + radius,
-      fill=color, outline=self.background_color, width=10
+      fill = color, outline = self.background_color, width = 10
     )
 
   def draw_lines(self):
@@ -190,7 +196,7 @@ class TkRenderer:
         self.padding + x * self.cell_size,
         self.padding + self.window_w - 2 * self.padding,
         self.padding + x * self.cell_size,
-        fill="black"
+        fill = "black"
       )
     for x in range(self.col_n):
       # vertical lines
@@ -199,7 +205,7 @@ class TkRenderer:
         self.padding,
         self.padding + x * self.cell_size,
         self.padding + self.window_h - 2 * self.padding,
-        fill="black"
+        fill = "black"
       )
 
   def draw_star_points(self):
@@ -238,7 +244,7 @@ class TkRenderer:
     color = "#58d68d"
     self.canvas.create_oval(
       cx - radius, cy - radius, cx + radius, cy + radius,
-      fill=color, outline=color, width=5
+      fill = color, outline = color, width = 5
     )
 
   def draw_mcts_state(self):
@@ -253,7 +259,7 @@ class TkRenderer:
 
     for x in range(self.col_n):
       for y in range(self.row_n):
-        q, visited_time = self.cur_mcts_data.get(row=y, col=x)
+        q, visited_time = self.cur_mcts_data.get(row = y, col = x)
 
         if (y, x) == best_move_pos:
           candidate_color = '#0CE6E6' # HSV: 180 95 90
@@ -333,8 +339,16 @@ class TkRenderer:
 
     if visited_time >= display_threshold:
       vertical_bias = 5
-      self.canvas.create_text(cx, cy - vertical_bias, text=f'{q:.2f}', font=(self.font, 10), fill='black')
-      self.canvas.create_text(cx, cy + vertical_bias, text=f'{int(visited_time)}', font=(self.font, 10), fill='black')
+      self.canvas.create_text(
+        cx, cy - vertical_bias,
+        text = f'{q:.2f}',
+        font = (self.font, 10), fill = 'black'
+      )
+      self.canvas.create_text(
+        cx, cy + vertical_bias,
+        text = f'{int(visited_time)}',
+        font = (self.font, 10), fill = 'black'
+      )
 
   def draw_pieces(self):
     for x in range(self.col_n):
@@ -394,8 +408,14 @@ class TkRenderer:
       self.winning_rate_bar_height * 1.6, width - self.winning_rate_bar_height * 1.6
     ))
 
-    self.canvas.create_rectangle(x0, y0, x0 + width, y0 + self.winning_rate_bar_height, fill='white', outline='')
-    self.canvas.create_rectangle(x0, y0, x0 + black_width, y0 + self.winning_rate_bar_height, fill='black', outline='')
+    self.canvas.create_rectangle(
+      x0, y0, x0 + width, y0 + self.winning_rate_bar_height,
+      fill = 'white', outline = ''
+    )
+    self.canvas.create_rectangle(
+      x0, y0, x0 + black_width, y0 + self.winning_rate_bar_height,
+      fill = 'black', outline = ''
+    )
 
     gap = self.winning_rate_bar_height // 4
 
@@ -404,9 +424,9 @@ class TkRenderer:
       self.canvas.create_text(
         x0 + gap if is_black else x0 + width - gap,
         y0 + self.winning_rate_bar_height // 2 - 1,
-        text=f'{win_rate * 100:.1f}', font=(self.font, self.winning_rate_bar_height // 2),
-        fill='white' if is_black else 'black',
-        anchor='w' if is_black else 'e'
+        text = f'{win_rate * 100:.1f}', font = (self.font, self.winning_rate_bar_height // 2),
+        fill = 'white' if is_black else 'black',
+        anchor = 'w' if is_black else 'e'
       )
 
     render_win_rate_text(Player.black, black_win_rate)
@@ -419,7 +439,7 @@ class TkRenderer:
       message = f'{winner} wins  {game_result}'
       self.canvas.create_text(
         self.window_w / 2, self.padding / 2,
-        text=message, font=("Arial", 20), fill="red"
+        text = message, font = ("Arial", 20), fill = "red"
       )
 
   def on_mouse_move(self, event: tk.Event):
@@ -458,7 +478,7 @@ class TkRenderer:
 
   def send_play(self, row, col):
     '''indexing starts from 1'''
-    self.move_connection.send(Move.play(Point(row=row, col=col)))
+    self.move_connection.send(Move.play(Point(row = row, col = col)))
 
   def send_pass_turn(self):
     self.move_connection.send(Move.pass_turn())
