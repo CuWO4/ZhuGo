@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
-import math
-from typing import Callable
+from torch.utils.checkpoint import checkpoint
 
 __all__ = [
   'ZhuGo',
@@ -16,111 +15,9 @@ def kaiming_init_sequential(sequential: nn.Sequential, nonlinearity = 'leaky_rel
     if isinstance(module, nn.Sequential):
       kaiming_init_sequential(module, nonlinearity, a)
 
-class LambdaModule(nn.Module):
-  def __init__(self, func: Callable):
-    super(LambdaModule, self).__init__()
-    self.func = func
-
-  def forward(self, x):
-    return self.func(x)
-
-class ParamAttentionMixing(nn.Module):
-  def __init__(self, min_alpha: float = 0.2, max_alpha: float = 0.8):
-    super(ParamAttentionMixing, self).__init__()
-    self.min_alpha = min_alpha
-    self.max_alpha = max_alpha
-    self.alpha = nn.Parameter(torch.tensor(0.0))
-
-  def forward(self, x, atten):
-    alpha = torch.sigmoid(self.alpha) * (self.max_alpha - self.min_alpha) + self.min_alpha
-
-    # (1 - alpha) * x + alpha * x * atten
-    return x + alpha * x * (atten - 1)
-
-class TwoWayECABlock(nn.Module):
-  '''(B, C, N, M) -> (B, C, N, M)'''
-  def __init__(self, channels: int, gamma: float = 2.0, beta: float = 1.0):
-    super(TwoWayECABlock, self).__init__()
-
-    k_size = max(int((math.log2(channels) + beta) / gamma), 1)
-    k_size = k_size if k_size % 2 else k_size + 1  # ensure odd
-
-    self.atten = nn.Sequential(
-      # (B, C, N, M)
-      LambdaModule(lambda x: torch.stack((x.mean((-2, -1)), x.amax((-2, -1))), dim = 1)),
-      # (B, 2, C)
-      nn.Conv1d(2, 1, kernel_size = k_size, padding = (k_size - 1) // 2, bias = False),
-      nn.BatchNorm1d(1),
-      nn.Sigmoid(),
-      # (B, 1, C)
-      LambdaModule(lambda x: x.permute(0, 2, 1).unsqueeze(-1))
-      # (B, C, 1, 1)
-    )
-
-    self.param_attention_mixing = ParamAttentionMixing()
-    
-    nn.init.xavier_normal_(self.atten[1].weight)
-
-  def forward(self, x):
-    atten = self.atten(x)
-    return self.param_attention_mixing(x, atten)
-
-class CBAMBlock(nn.Module):
-  '''(B, C, H, W) -> (B, C, H, W)'''
-  def __init__(self, channels: int, reduction: int = 16):
-    super(CBAMBlock, self).__init__()
-    bottleneck_channels = channels // reduction
-
-    self.channel_avg_fc = nn.Sequential(
-      # (B, C, N, M)
-      LambdaModule(lambda x: x.mean((-2, -1))),
-      # (B, C)
-      nn.Linear(channels, bottleneck_channels),
-      nn.LeakyReLU()
-    )
-    self.channel_max_fc = nn.Sequential(
-      # (B, C, N, M)
-      LambdaModule(lambda x: x.amax((-2, -1))),
-      # (B, C)
-      nn.Linear(channels, bottleneck_channels),
-      nn.LeakyReLU()
-    )
-    self.channel_atten = nn.Sequential(
-      LambdaModule(lambda x: self.channel_avg_fc(x) + self.channel_max_fc(x)),
-      nn.Linear(bottleneck_channels, channels),
-      nn.Sigmoid(),
-      # (B, C)
-      LambdaModule(lambda x: x.unsqueeze(-1).unsqueeze(-1))
-      # (B, C, 1, 1)
-    )
-
-    self.plane_atten = nn.Sequential(
-      # (B, C, N, M)
-      LambdaModule(lambda x: torch.cat((x.mean(1, keepdim = True), x.amax(1, keepdim = True)), dim = 1)),
-      # (B, 2, N, M)
-      nn.Conv2d(2, 1, kernel_size=7, padding=3, bias=False),
-      nn.BatchNorm2d(1),
-      nn.Sigmoid()
-      # (B, 1, N, M)
-    )
-
-    self.param_attention_mixing = ParamAttentionMixing()
-
-    kaiming_init_sequential(self.channel_avg_fc)
-    kaiming_init_sequential(self.channel_max_fc)
-    nn.init.xavier_normal_(self.channel_atten[1].weight)
-    nn.init.zeros_(self.channel_atten[1].bias)
-
-    nn.init.xavier_normal_(self.plane_atten[1].weight)
-
-  def forward(self, x):
-    channel_atten = self.channel_atten(x) # (B, C, 1, 1)
-    plane_atten = self.plane_atten(x)  # (B, 1, N, M)
-    return self.param_attention_mixing(x, channel_atten * plane_atten)
-
 class ResidualConvBlock(nn.Module):
   '''(B, C, N, M) -> (B, C, N, M)'''
-  def __init__(self, channels):
+  def __init__(self, channels, *, checkpoint: bool):
     super(ResidualConvBlock, self).__init__()
     self.model = nn.Sequential(
       nn.BatchNorm2d(channels),
@@ -133,8 +30,35 @@ class ResidualConvBlock(nn.Module):
 
     kaiming_init_sequential(self.model)
 
+    self.checkpoint = checkpoint
+
   def forward(self, x):
-    return self.model(x) + x
+    return checkpoint(self.model, x, use_reentrant = False) + x if self.checkpoint else self.model(x) + x
+
+class GlobalBiasBLock(nn.Module):
+  '''(B, C, N, M) -> (B, C, N, M)'''
+  def __init__(self, channel, *, checkpoint: bool):
+    super(GlobalBiasBLock, self).__init__()
+    self.activate = nn.Sequential(
+      nn.BatchNorm2d(channel),
+      nn.LeakyReLU(),
+    )
+
+    self.linear = nn.Linear(2 * channel, channel)
+
+    nn.init.xavier_normal_(self.linear.weight)
+    nn.init.zeros_(self.linear.bias)
+
+    self.checkpoint = checkpoint
+
+  def forward(self, x: torch.Tensor):
+    y = checkpoint(self.activate, x, use_reentrant = False) if self.checkpoint else self.activate(x)
+    plane_means = y.mean(dim = (-2, -1)).flatten(start_dim = 1)
+    plane_maxes = y.amax(dim = (-2, -1)).flatten(start_dim = 1)
+    y = checkpoint(self.linear, torch.cat((plane_means, plane_maxes), dim = 1), use_reentrant = False) \
+      if self.checkpoint else self.linear(torch.cat((plane_means, plane_maxes), dim = 1))
+    y.unsqueeze_(-1).unsqueeze_(-1)
+    return x + y
 
 #
 # nested bottleneck residual network
@@ -170,7 +94,6 @@ class ResidualConvBlock(nn.Module):
 #   |   [+]<--`
 #   |    |
 #   |   BN
-#   |   ECA
 #   |  ReLU
 #   | Conv1x1  C/2 -> C
 #   V    |
@@ -181,7 +104,7 @@ class ResidualConvBlock(nn.Module):
 
 class ZhuGoResidualConvBlock(nn.Module):
   '''(B, C, N, M) -> (B, C, N, M)'''
-  def __init__(self, channels):
+  def __init__(self, channels, *, checkpoint: bool):
     super(ZhuGoResidualConvBlock, self).__init__()
 
     inner_channels = channels // 2
@@ -193,13 +116,12 @@ class ZhuGoResidualConvBlock(nn.Module):
     )
 
     self.inner_residual_blocks = nn.Sequential(
-      ResidualConvBlock(inner_channels),
-      ResidualConvBlock(inner_channels),
+      ResidualConvBlock(inner_channels, checkpoint = checkpoint),
+      ResidualConvBlock(inner_channels, checkpoint = checkpoint),
     )
 
     self.decoder_conv1x1 = nn.Sequential(
       nn.BatchNorm2d(inner_channels),
-      TwoWayECABlock(inner_channels),
       nn.LeakyReLU(),
       nn.Conv2d(inner_channels, channels, kernel_size=1, bias=False)
     )
@@ -207,10 +129,14 @@ class ZhuGoResidualConvBlock(nn.Module):
     kaiming_init_sequential(self.encoder_conv1x1)
     kaiming_init_sequential(self.decoder_conv1x1)
 
+    self.checkpoint = checkpoint
+
   def forward(self, x):
-    out = self.encoder_conv1x1(x)
+    out = checkpoint(self.encoder_conv1x1, x, use_reentrant = False) \
+      if self.checkpoint else self.encoder_conv1x1(x)
     out = self.inner_residual_blocks(out)
-    out = self.decoder_conv1x1(out) + x
+    out = checkpoint(self.decoder_conv1x1, out, use_reentrant = False) + x \
+      if self.checkpoint else self.decoder_conv1x1(out) + x
     return out
 
 class ZhuGoSharedResNet(nn.Module):
@@ -221,14 +147,21 @@ class ZhuGoSharedResNet(nn.Module):
     residual_channels: int,
     residual_depths: int,
     bottleneck_channels: int,
+    *,
+    checkpoint: bool
   ):
     super(ZhuGoSharedResNet, self).__init__()
 
     assert len(residual_channels) == len(residual_depths) and len(residual_depths) > 0
     length = len(residual_channels)
+    total_depth = 0
     residual_layers = []
     for idx, (channel, depth) in enumerate(zip(residual_channels, residual_depths)):
-      residual_layers += [ZhuGoResidualConvBlock(channel) for _ in range(depth)]
+      for _ in range(depth):
+        residual_layers.append(ZhuGoResidualConvBlock(channel, checkpoint = checkpoint))
+        if total_depth % 3 == 2:
+          residual_layers.append(GlobalBiasBLock(channel, checkpoint = checkpoint))
+        total_depth += 1
       if idx < length - 1:
         next_channel = residual_channels[idx + 1]
         residual_layers += [
@@ -263,17 +196,21 @@ class ZhuGoPolicyHead(nn.Module):
     self,
     board_size: tuple[int, int],
     bottleneck_channels: int,
-    policy_residual_depth: int
+    policy_residual_depth: int,
+    *,
+    checkpoint: bool
   ):
     super(ZhuGoPolicyHead, self).__init__()
 
+    shared_resnet_layers = []
+    for idx in range(policy_residual_depth):
+      shared_resnet_layers.append(ZhuGoResidualConvBlock(bottleneck_channels, checkpoint = checkpoint))
+      if idx % 3 == 0:
+        shared_resnet_layers.append(GlobalBiasBLock(bottleneck_channels, checkpoint = checkpoint))
+
     self.shared = nn.Sequential(
-      *[
-        ZhuGoResidualConvBlock(bottleneck_channels)
-        for _ in range(policy_residual_depth)
-      ],
+      *shared_resnet_layers,
       nn.BatchNorm2d(bottleneck_channels),
-      CBAMBlock(bottleneck_channels, reduction = 8),
       nn.LeakyReLU(),
     )
 
@@ -301,9 +238,14 @@ class ZhuGoPolicyHead(nn.Module):
     nn.init.xavier_normal_(self.move_model[-2].weight)
     nn.init.xavier_normal_(self.pass_model[-1].weight)
 
+    self.checkpoint = checkpoint
+
   def forward(self, x):
     out = self.shared(x)
-    return torch.cat((self.move_model(out), self.pass_model(out)), dim = 1)
+    return torch.cat((
+      checkpoint(self.move_model, out, use_reentrant = False) if self.checkpoint else self.move_model(out),
+      checkpoint(self.pass_model, out, use_reentrant = False) if self.checkpoint else self.pass_model(out)
+    ), dim = 1)
 
 class ZhuGoValueHead(nn.Module):
   '''(B, C, N, M) -> (B, 1)'''
@@ -312,17 +254,21 @@ class ZhuGoValueHead(nn.Module):
     board_size: tuple[int, int],
     bottleneck_channels: int,
     value_residual_depth: int,
-    value_middle_width: int
+    value_middle_width: int,
+    *,
+    checkpoint: bool
   ):
     super(ZhuGoValueHead, self).__init__()
 
+    shared_resnet_layers = []
+    for idx in range(value_residual_depth):
+      shared_resnet_layers.append(ZhuGoResidualConvBlock(bottleneck_channels, checkpoint = checkpoint))
+      if idx % 3 == 0:
+        shared_resnet_layers.append(GlobalBiasBLock(bottleneck_channels, checkpoint = checkpoint))
+
     self.residual = nn.Sequential(
-      *[
-        ZhuGoResidualConvBlock(bottleneck_channels)
-        for _ in range(value_residual_depth)
-      ],
+      *shared_resnet_layers,
       nn.BatchNorm2d(bottleneck_channels),
-      CBAMBlock(bottleneck_channels, reduction = 8),
       nn.LeakyReLU(),
     )
 
@@ -356,9 +302,14 @@ class ZhuGoValueHead(nn.Module):
     nn.init.xavier_normal_(self.dense[-1].weight)
     nn.init.zeros_(self.dense[-1].bias)
 
+    self.checkpoint = checkpoint
+
   def forward(self, x):
     out = self.residual(x)
-    out = torch.cat([self.flatten1(out), self.flatten2(out)], dim=1)
+    out = torch.cat((
+      checkpoint(self.flatten1, out, use_reentrant = False) if self.checkpoint else self.flatten1(out),
+      checkpoint(self.flatten2, out, use_reentrant = False) if self.checkpoint else self.flatten2(out)
+    ), dim=1)
     out = self.dense(out)
     return out
 
@@ -378,15 +329,22 @@ class ZhuGo(nn.Module):
     bottleneck_channels: int,
     policy_residual_depth: int,
     value_residual_depth: int,
-    value_middle_width: int
+    value_middle_width: int,
+    checkpoint: bool = True
   ):
     super(ZhuGo, self).__init__()
 
-    self.shared = ZhuGoSharedResNet(input_channels, residual_channels, residual_depths, bottleneck_channels)
+    self.shared = ZhuGoSharedResNet(
+      input_channels, residual_channels, residual_depths, bottleneck_channels, checkpoint = checkpoint
+    )
 
-    self.policy = ZhuGoPolicyHead(board_size, bottleneck_channels, policy_residual_depth)
+    self.policy = ZhuGoPolicyHead(
+      board_size, bottleneck_channels, policy_residual_depth, checkpoint = checkpoint
+    )
 
-    self.value = ZhuGoValueHead(board_size, bottleneck_channels, value_residual_depth, value_middle_width)
+    self.value = ZhuGoValueHead(
+      board_size, bottleneck_channels, value_residual_depth, value_middle_width, checkpoint = checkpoint
+    )
 
   def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     shared = self.shared(x)
