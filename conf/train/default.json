@@ -3,12 +3,12 @@
   "prefetch_batch": 300,
   "test_prefetch_batch": 50,
   "optimizer": {
-    "lr": 0.1,
+    "lr": 0.12,
     "momentum": 0.9,
-    "weight_decay": 1e-4
+    "weight_decay": 3e-5
   },
   "trainer": {
-    "batch_accumulation": 5,
+    "batch_accumulation": 4,
     "gradient_clip": 0.75,
     "value_loss_weight": 1.0,
     "soft_target_nominal_weight": 3.0,
