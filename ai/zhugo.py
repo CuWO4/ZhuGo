@@ -139,50 +139,40 @@ class ZhuGoResidualConvBlock(nn.Module):
       if self.checkpoint else self.decoder_conv1x1(out) + x
     return out
 
+class MeanMax2dGlobalPool(nn.Module):
+  '''(B, C, N, M) -> (B, 2 * C, 1, 1)'''
+  def __init__(self):
+    super(MeanMax2dGlobalPool, self).__init__()
+
+  def forward(self, x):
+    return torch.cat((
+      torch.mean(x, dim = (-2, -1), keepdim = True),
+      torch.amax(x, dim = (-2, -1), keepdim = True),
+    ), dim = 1)
+
 class ZhuGoSharedResNet(nn.Module):
   '''(B, C1, N, M) -> (B, C2, N, M)'''
   def __init__(
     self,
     input_channels: int,
-    residual_channels: int,
-    residual_depths: int,
-    bottleneck_channels: int,
+    residual_channel: int,
+    residual_depth: int,
     *,
     checkpoint: bool
   ):
     super(ZhuGoSharedResNet, self).__init__()
 
-    assert len(residual_channels) == len(residual_depths) and len(residual_depths) > 0
-    length = len(residual_channels)
-    total_depth = 0
     residual_layers = []
-    for idx, (channel, depth) in enumerate(zip(residual_channels, residual_depths)):
-      for _ in range(depth):
-        residual_layers.append(ZhuGoResidualConvBlock(channel, checkpoint = checkpoint))
-        if total_depth % 3 == 2:
-          residual_layers.append(GlobalBiasBLock(channel, checkpoint = checkpoint))
-        total_depth += 1
-      if idx < length - 1:
-        next_channel = residual_channels[idx + 1]
-        residual_layers += [
-          nn.BatchNorm2d(channel),
-          nn.LeakyReLU(),
-          nn.Conv2d(channel, next_channel, kernel_size=3, padding=1, bias=False),
-        ]
-
-    first_channel = residual_channels[0]
-    last_channel = residual_channels[-1]
+    total_depth = 0
+    for _ in range(residual_depth):
+      residual_layers.append(ZhuGoResidualConvBlock(residual_channel, checkpoint = checkpoint))
+      if total_depth % 3 == 2:
+        residual_layers.append(GlobalBiasBLock(residual_channel, checkpoint = checkpoint))
+      total_depth += 1
 
     self.model = nn.Sequential(
-      # input layers
-      nn.Conv2d(input_channels, first_channel, kernel_size=5, padding=2, bias=False),
-
+      nn.Conv2d(input_channels, residual_channel, kernel_size=5, padding=2, bias=False),
       *residual_layers,
-
-      # bottleneck convolution
-      nn.BatchNorm2d(last_channel),
-      nn.LeakyReLU(),
-      nn.Conv2d(last_channel, bottleneck_channels, kernel_size=1, bias=False),
     )
 
     kaiming_init_sequential(self.model)
@@ -190,129 +180,110 @@ class ZhuGoSharedResNet(nn.Module):
   def forward(self, x):
     return self.model(x)
 
+# https://github.com/lightvector/KataGo/blob/6260e62c66132bd3d37e894ede213858324db45d/python/model_pytorch.py
 class ZhuGoPolicyHead(nn.Module):
   '''(B, C, N, M) -> (B, N * M + 1)'''
   def __init__(
     self,
-    board_size: tuple[int, int],
-    bottleneck_channels: int,
-    policy_residual_depth: int,
+    residual_channel: int,
     *,
     checkpoint: bool
   ):
     super(ZhuGoPolicyHead, self).__init__()
 
-    shared_resnet_layers = []
-    for idx in range(policy_residual_depth):
-      shared_resnet_layers.append(ZhuGoResidualConvBlock(bottleneck_channels, checkpoint = checkpoint))
-      if idx % 3 == 0:
-        shared_resnet_layers.append(GlobalBiasBLock(bottleneck_channels, checkpoint = checkpoint))
+    self.outg = nn.Sequential(
+      nn.BatchNorm2d(residual_channel),
+      nn.Conv2d(residual_channel, residual_channel, 1, bias = False),
+      nn.BatchNorm2d(residual_channel),
+      nn.LeakyReLU(),
+      MeanMax2dGlobalPool(),
+      nn.Flatten()
+    )
 
-    self.shared = nn.Sequential(
-      *shared_resnet_layers,
-      nn.BatchNorm2d(bottleneck_channels),
+    self.pass_linear = nn.Sequential(
+      nn.Linear(2 * residual_channel, residual_channel // 2),
+      nn.LeakyReLU(),
+      nn.Linear(residual_channel // 2, 1)
+    )
+
+    self.assist_linear = nn.Linear(2 * residual_channel, residual_channel)
+
+    self.pre_outp = nn.Sequential(
+      nn.BatchNorm2d(residual_channel),
+      nn.Conv2d(residual_channel, residual_channel, 1, bias = False),
+      nn.BatchNorm2d(residual_channel),
       nn.LeakyReLU(),
     )
 
-    self.move_model = nn.Sequential(
-      nn.Conv2d(bottleneck_channels, bottleneck_channels // 2, kernel_size=1, bias=False),
-      nn.BatchNorm2d(bottleneck_channels // 2),
+    self.post_outp = nn.Sequential(
+      nn.BatchNorm2d(residual_channel),
       nn.LeakyReLU(),
-      nn.Conv2d(bottleneck_channels // 2, 1, kernel_size=1),
-      nn.Flatten(),
+      nn.Conv2d(residual_channel, 1, 1)
     )
 
-    self.pass_model = nn.Sequential(
-      nn.Conv2d(bottleneck_channels, 1, kernel_size=1, bias=False),
-      nn.BatchNorm2d(1),
-      nn.LeakyReLU(),
-      nn.Flatten(),
-      nn.Linear(board_size[0] * board_size[1], board_size[0] * board_size[1] // 4),
-      nn.LeakyReLU(),
-      nn.Linear(board_size[0] * board_size[1] // 4, 1),
-    )
-
-    kaiming_init_sequential(self.shared)
-    kaiming_init_sequential(self.move_model)
-    kaiming_init_sequential(self.pass_model)
-    nn.init.xavier_normal_(self.move_model[-2].weight)
-    nn.init.xavier_normal_(self.pass_model[-1].weight)
+    kaiming_init_sequential(self.outg)
+    kaiming_init_sequential(self.pass_linear)
+    nn.init.xavier_normal_(self.pass_linear[-1].weight)
+    nn.init.zeros_(self.pass_linear[-1].bias)
+    nn.init.kaiming_normal_(self.assist_linear.weight)
+    nn.init.zeros_(self.assist_linear.bias)
+    kaiming_init_sequential(self.pre_outp)
+    kaiming_init_sequential(self.post_outp)
+    nn.init.xavier_normal_(self.post_outp[-1].weight)
+    nn.init.zeros_(self.post_outp[-1].bias)
 
     self.checkpoint = checkpoint
 
   def forward(self, x):
-    out = self.shared(x)
+    outg = checkpoint(self.outg, x, use_reentrant = False) \
+      if self.checkpoint else self.outg(x) # (B, 2 * C)
+    pass_logits = self.pass_linear(outg)
+    outg = checkpoint(self.assist_linear, outg, use_reentrant = False) \
+      if self.checkpoint else self.assist_linear(outg)
+    outg = outg.unsqueeze(-1).unsqueeze(-1)
+    outp = checkpoint(self.pre_outp, x, use_reentrant = False) \
+      if self.checkpoint else self.pre_outp(x)
+    outp = outp + outg
+    outp = checkpoint(self.post_outp, outp, use_reentrant = False) \
+      if self.checkpoint else self.post_outp(outp)
     return torch.cat((
-      checkpoint(self.move_model, out, use_reentrant = False) if self.checkpoint else self.move_model(out),
-      checkpoint(self.pass_model, out, use_reentrant = False) if self.checkpoint else self.pass_model(out)
+      torch.flatten(outp, start_dim = 1),
+      pass_logits
     ), dim = 1)
 
 class ZhuGoValueHead(nn.Module):
   '''(B, C, N, M) -> (B, 1)'''
   def __init__(
     self,
-    board_size: tuple[int, int],
-    bottleneck_channels: int,
-    value_residual_depth: int,
+    residual_channel: int,
     value_middle_width: int,
     *,
     checkpoint: bool
   ):
     super(ZhuGoValueHead, self).__init__()
 
-    shared_resnet_layers = []
-    for idx in range(value_residual_depth):
-      shared_resnet_layers.append(ZhuGoResidualConvBlock(bottleneck_channels, checkpoint = checkpoint))
-      if idx % 3 == 0:
-        shared_resnet_layers.append(GlobalBiasBLock(bottleneck_channels, checkpoint = checkpoint))
-
-    self.residual = nn.Sequential(
-      *shared_resnet_layers,
-      nn.BatchNorm2d(bottleneck_channels),
+    self.model = nn.Sequential(
+      nn.BatchNorm2d(residual_channel),
       nn.LeakyReLU(),
-    )
-
-    self.flatten1 = nn.Sequential(
-      nn.AdaptiveAvgPool2d((1, 1)),
-      nn.Flatten()
-    )
-
-    self.flatten2 = nn.Sequential(
-      nn.Conv2d(bottleneck_channels, bottleneck_channels, kernel_size=3, stride=2, padding=1, bias=False),
-      nn.BatchNorm2d(bottleneck_channels),
+      nn.Conv2d(residual_channel, residual_channel, 1, bias=False),
+      nn.BatchNorm2d(residual_channel),
       nn.LeakyReLU(),
-      nn.Conv2d(bottleneck_channels, bottleneck_channels // 2, kernel_size=1, bias=False),
-      nn.BatchNorm2d(bottleneck_channels // 2),
-      nn.LeakyReLU(),
-      nn.Conv2d(bottleneck_channels // 2, 1, kernel_size=1, bias=False),
-      nn.BatchNorm2d(1),
-      nn.LeakyReLU(),
+      MeanMax2dGlobalPool(),
       nn.Flatten(),
-    )
-
-    self.dense = nn.Sequential(
-      nn.Linear(bottleneck_channels + ((board_size[0] + 1) // 2) * ((board_size[1] + 1) // 2), value_middle_width),
+      nn.Linear(2 * residual_channel, value_middle_width),
       nn.LeakyReLU(),
       nn.Dropout(0.5),
       nn.Linear(value_middle_width, 1)
     )
 
-    kaiming_init_sequential(self.flatten2)
-    kaiming_init_sequential(self.dense)
-    nn.init.xavier_normal_(self.dense[-1].weight)
-    nn.init.zeros_(self.dense[-1].bias)
+    kaiming_init_sequential(self.model)
+    nn.init.xavier_normal_(self.model[-1].weight)
+    nn.init.zeros_(self.model[-1].bias)
 
     self.checkpoint = checkpoint
 
   def forward(self, x):
-    out = self.residual(x)
-    out = torch.cat((
-      checkpoint(self.flatten1, out, use_reentrant = False) if self.checkpoint else self.flatten1(out),
-      checkpoint(self.flatten2, out, use_reentrant = False) if self.checkpoint else self.flatten2(out)
-    ), dim=1)
-    out = self.dense(out)
-    return out
-
+    return checkpoint(self.model, x, use_reentrant = False) if self.checkpoint else self.model(x)
 
 class ZhuGo(nn.Module):
   '''
@@ -326,24 +297,34 @@ class ZhuGo(nn.Module):
     input_channels : int,
     residual_channels: tuple[int],
     residual_depths: tuple[int],
-    bottleneck_channels: int,
-    policy_residual_depth: int,
-    value_residual_depth: int,
+    bottleneck_channels: int | None = None,
+    policy_residual_depth: int | None = None,
+    value_residual_depth: int | None = None,
     value_middle_width: int,
     checkpoint: bool = True
   ):
     super(ZhuGo, self).__init__()
 
+    if len(residual_channels) > 1:
+      print('runtime warning: multi residual channels is no longer supported, only first is used, '
+            'others ignored...')
+    if bottleneck_channels is not None:
+      print('runtime warning: bottleneck_channels is deprecated, ignored...')
+    if policy_residual_depth is not None:
+      print('runtime warning: policy_residual_depth is deprecated, ignored...')
+    if value_residual_depth is not None:
+      print('runtime warning: value_residual_depth is deprecated, ignored...')
+
     self.shared = ZhuGoSharedResNet(
-      input_channels, residual_channels, residual_depths, bottleneck_channels, checkpoint = checkpoint
+      input_channels, residual_channels[0], residual_depths[0], checkpoint = checkpoint
     )
 
     self.policy = ZhuGoPolicyHead(
-      board_size, bottleneck_channels, policy_residual_depth, checkpoint = checkpoint
+      residual_channels[0], checkpoint = checkpoint
     )
 
     self.value = ZhuGoValueHead(
-      board_size, bottleneck_channels, value_residual_depth, value_middle_width, checkpoint = checkpoint
+      residual_channels[0], value_middle_width, checkpoint = checkpoint
     )
 
   def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
