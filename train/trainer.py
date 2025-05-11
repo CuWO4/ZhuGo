@@ -141,7 +141,6 @@ class Trainer:
         softened_policy_target /= softened_policy_target.sum(dim = -1, keepdim = True) + 1e-8
 
         policy_losses += self.soft_target_nominal_weight * self.policy_lost_fn(softened_policy_target, policy_logits)
-        policy_losses /= (1 + self.soft_target_nominal_weight)
 
         losses = policy_losses + value_losses * self.value_loss_weight
 
