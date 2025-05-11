@@ -34,7 +34,7 @@ class ModelManager:
         if choice == 'y' or choice == 'Y': break
         if choice == 'n' or choice == 'N' or choice == '': return
 
-    model = self.ModelType(**model_settings)
+    model = self.ModelType(**model_settings, checkpoint = False)
     model_path = os.path.join(self.root, self.MODEL_FILE)
     torch.save(model.state_dict(), model_path)
 
