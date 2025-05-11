@@ -28,31 +28,6 @@ def ctrl_c_catcher(func: Callable, exit_func: Callable):
   finally:
     exit_func()
 
-class EMA:
-  T = TypeVar('T')
-  def __init__(self, update_func: Callable[[T, T], T], uninit_value: T = None):
-    self.value: Optional[self.T] = uninit_value
-    self.update_func: Callable[[self.T, self.T], self.T] = update_func
-
-  def get(self) -> Optional[T]:
-    return self.value
-
-  def update(self, new_value: T) -> T:
-    self.value = self.update_func(self.value, new_value)
-    return self.value
-
-def compute_grad_l2_norm_mean(params: Iterable[nn.Parameter]) -> float:
-  sum = 0.0
-  count = 0
-  for param in params:
-    if param.grad is not None:
-      sum += param.grad.norm(2).item()
-      count += 1
-  if count == 0:
-    print('<compute_grad_l2_norm_mean> runtime warning: count = 0')
-    return 0.0
-  return sum / count
-
 MAX_LOSS_VALUE = 30 # loss more than this will be clamped, to avoid extreme gradient
 
 def cross_entropy(target: torch.Tensor, output_logits: torch.Tensor) -> torch.Tensor:
@@ -145,11 +120,6 @@ class Trainer:
 
     last_checkpoint_time = time.time()
 
-    ema_beta = 0.995 # half life = 138.28
-    ema_update_func = lambda old, new: ema_beta * old + (1 - ema_beta) * new
-    # 3.5 is based on experience
-    policy_to_value_grad_scale_factor = EMA(ema_update_func, uninit_value = 3.5)
-
     # only for displaying statics
     accumulated_total_loss: float = 0
     accumulated_policy_loss: float = 0
@@ -173,10 +143,7 @@ class Trainer:
         policy_losses += self.soft_target_nominal_weight * self.policy_lost_fn(softened_policy_target, policy_logits)
         policy_losses /= (1 + self.soft_target_nominal_weight)
 
-        # align to policy loss grad scale
-        # value_loss_weight implicitly contained in policy_to_value_grad_scale_factor, check
-        # updating of policy_to_value_grad_scale_factor below
-        losses = policy_losses + value_losses * policy_to_value_grad_scale_factor.get()
+        losses = policy_losses + value_losses * self.value_loss_weight
 
         loss = torch.mean(losses)
         backward_loss = loss / self.batch_accumulation
@@ -200,33 +167,6 @@ class Trainer:
         and (meta.batches - begin_batches) % self.batch_accumulation == self.batch_accumulation - 1
       ):
         scaler.unscale_(optimizer)
-
-        with torch.no_grad():
-          # just assume the model is ZhuGo, dirty but work
-          from ai.zhugo import ZhuGo
-          assert isinstance(model, ZhuGo)
-          policy_batch_grad_scale = compute_grad_l2_norm_mean(model.policy.shared.parameters())
-          value_batch_grad_scale = compute_grad_l2_norm_mean(model.value.residual.parameters())
-          batch_grad_scale_factor = policy_batch_grad_scale / value_batch_grad_scale
-
-          if math.isnan(batch_grad_scale_factor) or math.isinf(batch_grad_scale_factor):
-            print('runtime warning: invalid batch_gard_scale_factor, '
-                  f'{policy_batch_grad_scale=}, {value_batch_grad_scale=}, update skipped')
-          else:
-            # multiply value_loss_weight here to implicitly contains value_loss_weight
-            # otherwise, explicitly multiply value_loss_weight to loss, will effect gradient
-            # while the gradient difference will be caught by factor, then align it,
-            # which means any value_loss_weight will equivalent to value_loss_weight = 1.0
-            policy_to_value_grad_scale_factor.update(
-              self.value_loss_weight * batch_grad_scale_factor
-            )
-
-          writer.add_scalar(
-            'policy_to_value_gradient_scale_factor',
-            policy_to_value_grad_scale_factor.get(),
-            meta.batches
-          )
-
         nn.utils.clip_grad_norm_(model.parameters(), self.gradient_clip)
         scaler.step(optimizer)
         scaler.update()
@@ -251,7 +191,7 @@ class Trainer:
         and (meta.batches - begin_batches) % self.batch_per_test == self.batch_per_test - 1
       ):
         validate_policy_loss, validate_value_loss = self.test_model(model)
-        validate_loss = validate_policy_loss + validate_value_loss * policy_to_value_grad_scale_factor.get()
+        validate_loss = validate_policy_loss + validate_value_loss * self.value_loss_weight
         self.log_losses(
           'test', meta,
           validate_loss.item(),
