@@ -55,13 +55,6 @@ def point_wise_scalar_cross_entropy(target: torch.Tensor, output: torch.Tensor) 
   )
   return losses.clamp(0, MAX_LOSS_VALUE)
 
-def mse(target: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
-  '''p(B, ...), q(B, ...) -> (B, 1)'''
-  assert target.shape == output.shape and len(target.shape) > 1, (
-    f'improper shape {target.shape=} vs. {output.shape=}'
-  )
-  return torch.mean((target - output) ** 2, dim=tuple(range(1, target.dim()))).unsqueeze(1)
-
 class Trainer:
   def __init__(
     self,
@@ -75,7 +68,7 @@ class Trainer:
     policy_loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = cross_entropy,
     win_rate_loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = point_wise_scalar_cross_entropy,
     ownership_loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = point_wise_scalar_cross_entropy,
-    score_loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = mse,
+    score_loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = nn.SmoothL1Loss(reduction='none'),
     gradient_clip: float,
     policy_loss_weight: Optional[float] = None,
     win_rate_loss_weight: float,
@@ -185,7 +178,6 @@ class Trainer:
     input_tensor, policy_targets, win_rate_targets, ownership_targets, score_targets = data
     valid_mask = self.get_valid_mask(input_tensor)
     policy_targets = policy_targets * valid_mask # invalid moves does not engage in backward
-    score_targets = score_targets / (input_tensor.shape[2] * input_tensor.shape[3])
 
     softened_policy_targets = policy_targets ** self.softening_intensity
     softened_policy_targets /= softened_policy_targets.sum(dim = -1, keepdim = True) + 1e-8
@@ -196,7 +188,7 @@ class Trainer:
     win_rate_losses = self.win_rate_loss_fn(win_rate_targets, nn.functional.tanh(win_rate_logits))
     softened_policy_losses = self.policy_loss_fn(softened_policy_targets, policy_logits)
     ownership_losses = self.ownership_loss_fn(ownership_targets, nn.functional.tanh(ownership_logits))
-    score_losses = self.score_loss_fn(score_targets, nn.functional.tanh(score_logits))
+    score_losses = self.score_loss_fn(score_targets, score_logits)
 
     policy_loss = policy_losses.mean()
     win_rate_loss = win_rate_losses.mean()
