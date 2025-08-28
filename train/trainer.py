@@ -132,7 +132,7 @@ class Trainer:
       policy_targets *= valid_mask # invalid moves does not engage in backward
 
       with amp.autocast():
-        policy_logits, value_logits = model(inputs)
+        policy_logits, value_logits, _, _ = model(inputs)
 
         policy_losses = self.policy_lost_fn(policy_targets, policy_logits)
         value_losses = self.value_lost_fn(value_targets, nn.functional.tanh(value_logits))
@@ -215,7 +215,7 @@ class Trainer:
 
     with torch.no_grad():
       model.eval()
-      policy_logits, value_logits = model(inputs)
+      policy_logits, value_logits, _, _ = model(inputs)
       model.train()
 
     policy_losses = self.policy_lost_fn(policies, policy_logits)
