@@ -73,9 +73,9 @@ class TkRenderer:
     move_connection: conn.Connection,
     mcts_connection: conn.Connection,
     row_n: int, col_n: int,
-    cell_size: int=40,
-    padding: int=60,
-    backgroundd_color: str = '#CDAC6A',
+    cell_size: int = 40,
+    padding: int = 60,
+    background_color: str = '#CDAC6A',
     winning_rate_bar_height: int = 25,
     font: str = 'Consolas'
   ):
@@ -84,6 +84,7 @@ class TkRenderer:
     self.mcts_connection: conn.Connection = mcts_connection
     self.cur_game_state: GameState | None = None
     self.cur_mcts_data: MCTSData | None = None
+    self.last_move_pos: tuple[int, int] | None = None # 0-based
     self.refresh_ms: int = 100
 
     self.row_n: int = row_n
@@ -93,7 +94,7 @@ class TkRenderer:
 
     self.winning_rate_bar_height: int = winning_rate_bar_height
 
-    self.backgroundd_color = backgroundd_color
+    self.background_color = background_color
 
     self.font: str = font
 
@@ -103,25 +104,31 @@ class TkRenderer:
     self.root.title("ZhuGo")
     self.canvas: tk.Canvas = tk.Canvas(
       self.root,
-      width=self.window_w,
-      height=self.window_h + padding,
-      bd=0,
-      highlightthickness=0,
-      bg=self.backgroundd_color
+      width = self.window_w,
+      height = self.window_h + padding,
+      bd = 0,
+      highlightthickness = 0,
+      bg = self.background_color
     )
     self.canvas.pack()
 
     self.mouse_hover_pos: tuple[int] | None = None
 
     # Add buttons for Pass, Resign and Undo
-    self.pass_turn_button: tk.Button = tk.Button(self.root, text="Pass", command=self.on_pass_turn_button)
-    self.pass_turn_button.pack(side=tk.LEFT, padx=10, pady=10)
+    self.pass_turn_button: tk.Button = tk.Button(
+      self.root, text = "Pass", command = self.on_pass_turn_button
+    )
+    self.pass_turn_button.pack(side = tk.LEFT, padx = 10, pady = 10)
 
-    self.resign_button: tk.Button = tk.Button(self.root, text="Resign", command=self.on_resign_button)
-    self.resign_button.pack(side=tk.LEFT, padx=10, pady=10)
+    self.resign_button: tk.Button = tk.Button(
+      self.root, text = "Resign", command = self.on_resign_button
+    )
+    self.resign_button.pack(side = tk.LEFT, padx = 10, pady = 10)
 
-    self.undo_button: tk.Button = tk.Button(self.root, text='Undo', command=self.on_undo_botton)
-    self.undo_button.pack(side=tk.LEFT, padx=10, pady=10)
+    self.undo_button: tk.Button = tk.Button(
+      self.root, text = 'Undo', command = self.on_undo_botton
+    )
+    self.undo_button.pack(side = tk.LEFT, padx = 10, pady = 10)
 
     self.canvas.bind("<Button-1>", self.on_click)
     self.canvas.bind("<Motion>", self.on_mouse_move)
@@ -130,13 +137,26 @@ class TkRenderer:
     self.root.bind("<Tab>", self.on_tab)
 
     def check_update():
+      changed = False
+
       while self.game_state_connection.poll():
         self.cur_game_state = self.game_state_connection.recv()
+        changed = True
+      if (last_move := self.cur_game_state.last_move) is not None:
+        if last_move.is_pass or last_move.is_resign:
+          self.last_move_pos = None
+        else:
+          self.last_move_pos = (
+            last_move.point.col - 1,
+            last_move.point.row - 1
+          )
 
       while self.mcts_connection.poll():
         self.cur_mcts_data = self.mcts_connection.recv()
+        changed = True
 
-      self.draw_board()
+      if changed:
+        self.draw_board()
 
       self.root.after(self.refresh_ms, check_update)
 
@@ -170,7 +190,7 @@ class TkRenderer:
     cy = self.window_h
     self.canvas.create_oval(
       cx - radius, cy - radius, cx + radius, cy + radius,
-      fill=color, outline=self.backgroundd_color, width=10
+      fill = color, outline = self.background_color, width = 10
     )
 
   def draw_lines(self):
@@ -181,7 +201,7 @@ class TkRenderer:
         self.padding + x * self.cell_size,
         self.padding + self.window_w - 2 * self.padding,
         self.padding + x * self.cell_size,
-        fill="black"
+        fill = "black"
       )
     for x in range(self.col_n):
       # vertical lines
@@ -190,20 +210,23 @@ class TkRenderer:
         self.padding,
         self.padding + x * self.cell_size,
         self.padding + self.window_h - 2 * self.padding,
-        fill="black"
+        fill = "black"
       )
 
   def draw_star_points(self):
     star_positions = self.get_star_positions()
     for x, y in star_positions:
-      cx = self.padding + x * self.cell_size
-      cy = self.padding + y * self.cell_size
-      radius = 3
-      self.canvas.create_oval(
-        cx - radius, cy - radius, cx + radius, cy + radius,
-        fill="black"
-      )
+      self.draw_star_point(x, y, '#000000')
 
+  def draw_star_point(self, x: int, y: int, color: str):
+    cx = self.padding + x * self.cell_size
+    cy = self.padding + y * self.cell_size
+    radius = 3
+    self.canvas.create_oval(
+      cx - radius, cy - radius, cx + radius, cy + radius, fill = color, outline = color
+    )
+
+  # 0-based
   def get_star_positions(self):
     if self.row_n == self.col_n == 19:
       points = [3, 9, 15]
@@ -226,60 +249,8 @@ class TkRenderer:
     color = "#58d68d"
     self.canvas.create_oval(
       cx - radius, cy - radius, cx + radius, cy + radius,
-      fill=color, outline=color, width=5
+      fill = color, outline = color, width = 5
     )
-
-  def draw_pieces(self):
-    for x in range(self.col_n):
-      for y in range(self.row_n):
-        stone = self.cur_game_state.board.get(Point(row = y + 1, col = x + 1))
-        if stone == Player.black:
-          self.draw_piece(x, y, "black")
-        elif stone == Player.white:
-          self.draw_piece(x, y, "white")
-
-  def draw_piece(self, x, y, color, expand=0):
-    cx = self.padding + x * self.cell_size
-    cy = self.padding + y * self.cell_size
-    radius = self.cell_size // 2 - 2 + expand
-    self.canvas.create_oval(
-      cx - radius, cy - radius, cx + radius, cy + radius,
-      fill=color, outline=color
-    )
-
-  def draw_semitransparent_mcts_point(
-    self,
-    x: int, y: int,
-    color: str, alpha: int,
-    visited_time: int, q: float
-  ):
-    color = cal_transparent(self.backgroundd_color, color, alpha)
-    line_color = cal_transparent('#000000', color, alpha)
-    self.draw_piece(x, y, color)
-
-    cx = self.padding + x * self.cell_size
-    cy = self.padding + y * self.cell_size
-
-    self.canvas.create_line(
-      cx,
-      cy - self.cell_size // 2 if y > 0 else cy,
-      cx,
-      cy + self.cell_size // 2 if y < self.row_n - 1 else cy,
-      fill = line_color
-    )
-
-    self.canvas.create_line(
-      cx - self.cell_size // 2 if x > 0 else cx,
-      cy,
-      cx + self.cell_size // 2 if x < self.col_n - 1 else cx,
-      cy,
-      fill = line_color
-    )
-
-    vertical_bias = 5
-    self.canvas.create_text(cx, cy - vertical_bias, text=f'{q:.2f}', font=(self.font, 10), fill='black')
-    self.canvas.create_text(cx, cy + vertical_bias, text=f'{int(visited_time)}', font=(self.font, 10), fill='black')
-
 
   def draw_mcts_state(self):
     if self.cur_mcts_data is None:
@@ -289,21 +260,17 @@ class TkRenderer:
 
     best_move_pos = self.cur_mcts_data.best_pos()
 
+    display_threshold = 5
+
     for x in range(self.col_n):
       for y in range(self.row_n):
-        q, visited_time = self.cur_mcts_data.get(row=y, col=x)
-
-        if visited_time < 5:
-          continue
+        q, visited_time = self.cur_mcts_data.get(row = y, col = x)
 
         if (y, x) == best_move_pos:
           candidate_color = '#0CE6E6' # HSV: 180 95 90
-          self.draw_piece(x, y, '#5A5A5A', 2)
-          self.draw_piece(x, y, '#262626', 1)
           alpha = 255
         else:
-          color_table = [
-                               #   H  S  V
+          color_table = [      #   H  S  V
             (0.1,  '#C02F2A'), #   2 78 75
             (0.3,  '#DA4939'), #   6 74 85
             (0.45, '#DD8829'), #  32 81 87
@@ -324,7 +291,99 @@ class TkRenderer:
 
           alpha = int(255 * (0.5 + 0.5 *compress_f(visited_time / 500)))
 
-        self.draw_semitransparent_mcts_point(x, y, candidate_color, alpha, visited_time, q)
+        self.draw_semitransparent_mcts_point(
+          x = x,
+          y = y,
+          color = candidate_color,
+          alpha = alpha,
+          visited_time = visited_time,
+          q = q,
+          display_threshold = display_threshold
+        )
+
+  def draw_semitransparent_mcts_point(
+    self,
+    x: int, y: int,
+    color: str, alpha: int,
+    visited_time: int, q: float,
+    display_threshold: int,
+  ):
+    if visited_time == 0: return
+
+    if visited_time < display_threshold:
+      alpha //= 3
+    else:
+      # stroke
+      self.draw_piece(x, y, '#5A5A5A', 2)
+      self.draw_piece(x, y, '#262626', 1)
+
+    color = cal_transparent(self.background_color, color, alpha)
+    line_color = cal_transparent('#000000', color, alpha)
+    self.draw_piece(x, y, color)
+    if (x, y) in self.get_star_positions():
+      self.draw_star_point(x, y, line_color)
+
+    cx = self.padding + x * self.cell_size
+    cy = self.padding + y * self.cell_size
+
+    self.canvas.create_line(
+      cx,
+      cy - self.cell_size // 2 if y > 0 else cy,
+      cx,
+      cy + self.cell_size // 2 if y < self.row_n - 1 else cy,
+      fill = line_color
+    )
+
+    self.canvas.create_line(
+      cx - self.cell_size // 2 if x > 0 else cx,
+      cy,
+      cx + self.cell_size // 2 if x < self.col_n - 1 else cx,
+      cy,
+      fill = line_color
+    )
+
+    if visited_time >= display_threshold:
+      vertical_bias = 5
+      self.canvas.create_text(
+        cx, cy - vertical_bias,
+        text = f'{q:.2f}',
+        font = (self.font, 10), fill = 'black'
+      )
+      self.canvas.create_text(
+        cx, cy + vertical_bias,
+        text = f'{int(visited_time)}',
+        font = (self.font, 10), fill = 'black'
+      )
+
+  def draw_pieces(self):
+    for x in range(self.col_n):
+      for y in range(self.row_n):
+        stone = self.cur_game_state.board.get(Point(row = y + 1, col = x + 1))
+        if stone is None: continue
+        color = 'black' if stone == Player.black else 'white'
+        self.draw_piece(x, y, color)
+        if (x, y) == self.last_move_pos:
+          opposite_color = 'white' if stone == Player.black else 'black'
+          self.draw_last_move_mark(x, y, color, opposite_color)
+
+  def draw_piece(self, x, y, color, expand = 0):
+    cx = self.padding + x * self.cell_size
+    cy = self.padding + y * self.cell_size
+    radius = self.cell_size // 2 - 2 + expand
+    self.canvas.create_oval(
+      cx - radius, cy - radius, cx + radius, cy + radius,
+      fill = color, outline = color
+    )
+
+  def draw_last_move_mark(self, x, y, color, opposite_color):
+    cx = self.padding + x * self.cell_size
+    cy = self.padding + y * self.cell_size
+    radius = self.cell_size * 7 // 24
+    width = self.cell_size // 12
+    self.canvas.create_oval(
+      cx - radius, cy - radius, cx + radius, cy + radius,
+      width = width, fill = color, outline = opposite_color
+    )
 
   def draw_mcts_q_bar(self):
     if self.cur_mcts_data.win_rate is None:
@@ -354,8 +413,14 @@ class TkRenderer:
       self.winning_rate_bar_height * 1.6, width - self.winning_rate_bar_height * 1.6
     ))
 
-    self.canvas.create_rectangle(x0, y0, x0 + width, y0 + self.winning_rate_bar_height, fill='white', outline='')
-    self.canvas.create_rectangle(x0, y0, x0 + black_width, y0 + self.winning_rate_bar_height, fill='black', outline='')
+    self.canvas.create_rectangle(
+      x0, y0, x0 + width, y0 + self.winning_rate_bar_height,
+      fill = 'white', outline = ''
+    )
+    self.canvas.create_rectangle(
+      x0, y0, x0 + black_width, y0 + self.winning_rate_bar_height,
+      fill = 'black', outline = ''
+    )
 
     gap = self.winning_rate_bar_height // 4
 
@@ -364,9 +429,9 @@ class TkRenderer:
       self.canvas.create_text(
         x0 + gap if is_black else x0 + width - gap,
         y0 + self.winning_rate_bar_height // 2 - 1,
-        text=f'{win_rate * 100:.1f}', font=(self.font, self.winning_rate_bar_height // 2),
-        fill='white' if is_black else 'black',
-        anchor='w' if is_black else 'e'
+        text = f'{win_rate * 100:.1f}', font = (self.font, self.winning_rate_bar_height // 2),
+        fill = 'white' if is_black else 'black',
+        anchor = 'w' if is_black else 'e'
       )
 
     render_win_rate_text(Player.black, black_win_rate)
@@ -379,7 +444,7 @@ class TkRenderer:
       message = f'{winner} wins  {game_result}'
       self.canvas.create_text(
         self.window_w / 2, self.padding / 2,
-        text=message, font=("Arial", 20), fill="red"
+        text = message, font = ("Arial", 20), fill = "red"
       )
 
   def on_mouse_move(self, event: tk.Event):
@@ -418,7 +483,7 @@ class TkRenderer:
 
   def send_play(self, row, col):
     '''indexing starts from 1'''
-    self.move_connection.send(Move.play(Point(row=row, col=col)))
+    self.move_connection.send(Move.play(Point(row = row, col = col)))
 
   def send_pass_turn(self):
     self.move_connection.send(Move.pass_turn())
