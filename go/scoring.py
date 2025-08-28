@@ -15,6 +15,7 @@ class Territory:
     self.num_white_stones = 0
     self.num_dame = 0
     self.dame_points = []
+    self.map = territory_map
     for point, status in territory_map.items():  # <2>
       if status == Player.black:
         self.num_black_stones += 1
