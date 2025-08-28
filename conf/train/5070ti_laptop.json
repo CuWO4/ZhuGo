@@ -10,9 +10,11 @@
   "trainer": {
     "batch_accumulation": 2,
     "gradient_clip": 0.75,
-    "value_loss_weight": 1.5,
-    "soft_target_nominal_weight": 0.1,
+    "win_rate_loss_weight": 1.5,
+    "softened_policy_loss_weight": 0.1,
     "softening_intensity": 0.25,
+    "ownership_loss_weight": 0.5,
+    "score_loss_weight": 0.015,
 
     "batch_per_test": 25,
     "checkpoint_interval_sec": 3600

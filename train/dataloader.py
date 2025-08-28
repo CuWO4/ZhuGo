@@ -52,17 +52,19 @@ class BGTFDataLoader:
       daemon = True,
     ).start()
 
-  def __iter__(self) -> Iterator[tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
+  def __iter__(self) -> Iterator[tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]]:
     while True:
-      inputs, policies, values = self.cached.get(block = True)
+      inputs, policies, win_rate, ownership, score = self.cached.get(block = True)
       inputs = inputs.to(device = self.device)
       policies = policies.to(device = self.device)
-      values = values.to(device = self.device)
-      yield inputs, policies, values
+      win_rate = win_rate.to(device = self.device)
+      ownership = ownership.to(device = self.device)
+      score = score.to(device = self.device)
+      yield inputs, policies, win_rate, ownership, score
 
   @staticmethod
   def input_target_stream(root: str, encoder: Encoder, debug: bool) \
-    -> Iterator[tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
+    -> Iterator[tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]]:
     files = [path for f in os.listdir(root) if os.path.isfile(path := os.path.join(root, f))]
     random.shuffle(files)
     for file in cycle(files):
@@ -70,18 +72,21 @@ class BGTFDataLoader:
         print(f'<record_stream> loading {file}')
 
       results = []
-      for game, policy, value in load_file(file):
+      for game, policy, win_rate, ownership, score in load_file(file):
         rotated_tensors = [
           (
             rotated_input.cpu().unsqueeze_(0),
             torch.cat(
               (rotated_policy.reshape(361), policy[361:])
             ).cpu().unsqueeze_(0),
-            value.cpu().unsqueeze(0)
+            win_rate.cpu().unsqueeze(0),
+            rotated_ownership.cpu().reshape(361).unsqueeze_(0),
+            score.cpu().unsqueeze(0),
           )
-          for rotated_input, rotated_policy in zip(
+          for rotated_input, rotated_policy, rotated_ownership in zip(
             get_d8_sym_tensors(encoder.encode(game)),
-            get_d8_sym_tensors(policy[:361].view(19, 19))
+            get_d8_sym_tensors(policy[:361].view(19, 19)),
+            get_d8_sym_tensors(ownership.view(19, 19)),
           )
         ]
         random.shuffle(rotated_tensors)
@@ -109,6 +114,8 @@ class BGTFDataLoader:
           torch.cat(list(map(itemgetter(0), batch)), dim = 0),
           torch.cat(list(map(itemgetter(1), batch)), dim = 0),
           torch.cat(list(map(itemgetter(2), batch)), dim = 0),
+          torch.cat(list(map(itemgetter(3), batch)), dim = 0),
+          torch.cat(list(map(itemgetter(4), batch)), dim = 0),
         )
         result_queue.put(batch_tensor)
         batch = []
