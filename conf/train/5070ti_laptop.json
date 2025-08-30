@@ -14,7 +14,8 @@
     "softened_policy_loss_weight": 0.1,
     "softening_intensity": 0.25,
     "ownership_loss_weight": 0.5,
-    "score_loss_weight": 0.015,
+    "score_dist_loss_weight": 0.2,
+    "score_mean_loss_weight": 0.0015,
 
     "batch_per_test": 25,
     "checkpoint_interval_sec": 3600
