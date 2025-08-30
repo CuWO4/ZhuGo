@@ -253,9 +253,22 @@ class ZhuGoPolicyHead(nn.Module):
 
 class ZhuGoValueHead(nn.Module):
   '''
-  (B, C, N, M) -> (B, 1), (B, N * M), (B, 1)
+  (B, C, N, M) -> (B, 1), (B, N * M), (B, SCORE_BUCKET_COUNT)
   win_rate, ownership, score
   '''
+  # lower bound, upper bound, all buckets contains lower bound
+  SCORE_BUCKETS = torch.tensor((
+    (-1, -0.3),
+    (-0.3, -0.1),
+    (-0.1, -0.03),
+    (-0.03, -0.01),
+    (-0.01, 0),
+    (0, 0.01),
+    (0.01, 0.03),
+    (0.03, 0.1),
+    (0.1, 0.3),
+    (0.3, 1),
+  ), device = 'cuda')
   def __init__(
     self,
     residual_channel: int,
@@ -287,7 +300,7 @@ class ZhuGoValueHead(nn.Module):
 
     self.score_head = nn.Sequential(
       nn.Dropout(0.5),
-      nn.Linear(value_middle_width, 1),
+      nn.Linear(value_middle_width, self.SCORE_BUCKETS.shape[0]),
     )
 
     self.ownership_head = nn.Sequential(
@@ -326,11 +339,11 @@ class ZhuGoValueHead(nn.Module):
 
 class ZhuGo(nn.Module):
   '''
-  (B, C, N, M) -> (B, N * M + 1), (B, 1), (B, N * M), (B, 1)
+  (B, C, N, M) -> (B, N * M + 1), (B, 1), (B, N * M), (B, SCORE_BUCKET_COUNT)
   first is policy output logits, unnormalized, 361 (row-major moves) + 1 (pass turn).
   second is win_rate output logits, inactivated.
   third is ownership prediction logits, inactivated & unnormalized.
-  fourth is scoring prediction logits, inactivated.
+  fourth is scoring prediction logits, being consistent with ZhuGoValueHead.SCORE_BUCKETS, inactivated.
   '''
   def __init__(
     self, *,
