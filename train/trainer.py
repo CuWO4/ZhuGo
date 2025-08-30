@@ -8,9 +8,8 @@ from ai.encoder.zhugo_encoder import ZhuGoEncoder # dirty code, but let's do it 
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torch.cuda.amp as amp
+import torch.amp as amp
 from torch.utils.tensorboard import SummaryWriter
-import math
 from typing import Callable, Iterable, Optional
 import time
 from datetime import datetime
@@ -133,7 +132,7 @@ class Trainer:
     begin_batches = meta.batches
 
     for data in self.dataloader:
-      with amp.autocast():
+      with amp.autocast('cuda'):
         policy_loss, win_rate_loss, softened_policy_loss, ownership_loss, score_loss, loss = self.get_losses(model, data)
         backward_loss = loss / self.batch_accumulation
 
