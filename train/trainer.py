@@ -138,12 +138,36 @@ class Trainer:
 
     for data in self.dataloader:
       with amp.autocast('cuda'):
-        policy_loss, win_rate_loss, softened_policy_loss, ownership_loss, score_dist_loss, score_mean_loss, loss = self.get_losses(model, data)
+        data = self.execute_model(model, data)
+        policy_loss = data['policy_loss']
+        win_rate_loss = data['win_rate_loss']
+        softened_policy_loss = data['softened_policy_loss']
+        ownership_loss = data['ownership_loss']
+        score_dist_loss = data['score_dist_loss']
+        score_mean_loss = data['score_mean_loss']
+        loss = data['loss']
+        policy_accuracy = data['policy_accuracy']
+        win_rate_accuracy = data['win_rate_accuracy']
+        ownership_accuracy = data['ownership_accuracy']
         backward_loss = loss / self.batch_accumulation
 
       scaler.scale(backward_loss).backward()
 
-      self.log_losses('train', meta, loss, policy_loss, win_rate_loss, softened_policy_loss, ownership_loss, score_dist_loss, score_mean_loss, writer)
+      self.log_losses(
+        tag = 'train',
+        meta = meta,
+        total_loss = loss,
+        policy_loss = policy_loss,
+        win_rate_loss = win_rate_loss,
+        softened_policy_loss = softened_policy_loss,
+        ownership_loss = ownership_loss,
+        score_dist_loss = score_dist_loss,
+        score_mean_loss = score_mean_loss,
+        policy_accuracy = policy_accuracy,
+        win_rate_accuracy = win_rate_accuracy,
+        ownership_accuracy = ownership_accuracy,
+        writer = writer
+      )
 
       if (
         meta.batches - begin_batches > 0
@@ -162,10 +186,33 @@ class Trainer:
       ):
         with torch.no_grad():
           model.eval()
-          policy_loss, win_rate_loss, softened_policy_loss, ownership_loss, score_dist_loss, score_mean_loss, loss = \
-            self.get_losses(model, next(self.test_dataloader))
+          data = self.execute_model(model, next(self.test_dataloader))
+          policy_loss = data['policy_loss']
+          win_rate_loss = data['win_rate_loss']
+          softened_policy_loss = data['softened_policy_loss']
+          ownership_loss = data['ownership_loss']
+          score_dist_loss = data['score_dist_loss']
+          score_mean_loss = data['score_mean_loss']
+          policy_accuracy = data['policy_accuracy']
+          win_rate_accuracy = data['win_rate_accuracy']
+          ownership_accuracy = data['ownership_accuracy']
+          loss = data['loss']
           model.train()
-        self.log_losses('test', meta, loss, policy_loss, win_rate_loss, softened_policy_loss, ownership_loss, score_dist_loss, score_mean_loss, writer)
+        self.log_losses(
+          tag = 'test',
+          meta = meta,
+          total_loss = loss,
+          policy_loss = policy_loss,
+          win_rate_loss = win_rate_loss,
+          softened_policy_loss = softened_policy_loss,
+          ownership_loss = ownership_loss,
+          score_dist_loss = score_dist_loss,
+          score_mean_loss = score_mean_loss,
+          policy_accuracy = policy_accuracy,
+          win_rate_accuracy = win_rate_accuracy,
+          ownership_accuracy = ownership_accuracy,
+          writer = writer
+        )
 
       meta.batches += 1
 
@@ -176,9 +223,7 @@ class Trainer:
         last_checkpoint_time = time.time()
         print(f'checkpoint saved at {datetime.now().strftime("%H:%M:%S")}')
 
-  def get_losses(self, model: nn.Module, data: tuple[torch.Tensor]) \
-    -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    '''return policy_loss(1), win_rate_loss(1), softened_policy_loss(1), ownership_loss(1), score_dist_loss(1), score_mean_loss(1), total_loss'''
+  def execute_model(self, model: nn.Module, data: tuple[torch.Tensor]) -> dict[str, torch.Tensor]:
     input_tensor, policy_targets, win_rate_targets, ownership_targets, score_targets = data
     valid_mask = self.get_valid_mask(input_tensor)
     policy_targets = policy_targets * valid_mask # invalid moves does not engage in backward
@@ -208,6 +253,10 @@ class Trainer:
     score_dist_loss = score_dist_losses.mean()
     score_mean_loss = score_mean_losses.mean()
 
+    policy_accuracy = (torch.argmax(policy_logits, dim=-1) == torch.argmax(policy_targets, dim=-1)).float().mean()
+    win_rate_accuracy = (torch.sign(win_rate_logits) == torch.sign(win_rate_targets)).float().mean()
+    ownership_accuracy = (torch.sign(ownership_logits) == torch.sign(ownership_targets)).float().mean()
+
     loss = (
       policy_loss
       + self.win_rate_loss_weight * win_rate_loss
@@ -217,13 +266,25 @@ class Trainer:
       + self.score_mean_loss_weight * score_mean_loss
     )
 
-    return policy_loss, win_rate_loss, softened_policy_loss, ownership_loss, score_dist_loss, score_mean_loss, loss
+    return {
+      'policy_loss': policy_loss,
+      'win_rate_loss': win_rate_loss,
+      'softened_policy_loss': softened_policy_loss,
+      'ownership_loss': ownership_loss,
+      'score_dist_loss': score_dist_loss,
+      'score_mean_loss': score_mean_loss,
+      'loss': loss,
+      'policy_accuracy': policy_accuracy,
+      'win_rate_accuracy': win_rate_accuracy,
+      'ownership_accuracy': ownership_accuracy,
+    }
 
   def save_checkpoint(self, model: nn.Module):
     self.model_manager.save_checkpoint(model)
 
   @staticmethod
   def log_losses(
+    *,
     tag: str,
     meta: MetaData,
     total_loss: torch.Tensor,
@@ -233,6 +294,9 @@ class Trainer:
     ownership_loss: torch.Tensor,
     score_dist_loss: torch.Tensor,
     score_mean_loss: torch.Tensor,
+    policy_accuracy: torch.Tensor,
+    win_rate_accuracy: torch.Tensor,
+    ownership_accuracy: torch.Tensor,
     writer: SummaryWriter,
   ):
     total_loss = total_loss.item()
@@ -242,6 +306,9 @@ class Trainer:
     ownership_loss = ownership_loss.item()
     score_dist_loss = score_dist_loss.item()
     score_mean_loss = score_mean_loss.item()
+    policy_accuracy = policy_accuracy.item()
+    win_rate_accuracy = win_rate_accuracy.item()
+    ownership_accuracy = ownership_accuracy.item()
 
     print(
       f'{meta.batches:>8}'
@@ -255,6 +322,9 @@ class Trainer:
     writer.add_scalars('train/ownership_loss', { tag: ownership_loss }, meta.batches)
     writer.add_scalars('train/score_dist_loss', { tag: score_dist_loss }, meta.batches)
     writer.add_scalars('train/score_mean_loss', { tag: score_mean_loss }, meta.batches)
+    writer.add_scalars('train/policy_accuracy', { tag: policy_accuracy }, meta.batches)
+    writer.add_scalars('train/win_rate_accuracy', { tag: win_rate_accuracy }, meta.batches)
+    writer.add_scalars('train/ownership_accuracy', { tag: ownership_accuracy }, meta.batches)
 
   @staticmethod
   def log_histogram(model: nn.Module, meta: MetaData, writer: SummaryWriter):
