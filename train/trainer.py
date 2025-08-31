@@ -138,12 +138,30 @@ class Trainer:
 
     for data in self.dataloader:
       with amp.autocast('cuda'):
-        policy_loss, win_rate_loss, softened_policy_loss, ownership_loss, score_dist_loss, score_mean_loss, loss = self.get_losses(model, data)
+        data = self.execute_model(model, data)
+        policy_loss = data['policy_loss']
+        win_rate_loss = data['win_rate_loss']
+        softened_policy_loss = data['softened_policy_loss']
+        ownership_loss = data['ownership_loss']
+        score_dist_loss = data['score_dist_loss']
+        score_mean_loss = data['score_mean_loss']
+        loss = data['loss']
         backward_loss = loss / self.batch_accumulation
 
       scaler.scale(backward_loss).backward()
 
-      self.log_losses('train', meta, loss, policy_loss, win_rate_loss, softened_policy_loss, ownership_loss, score_dist_loss, score_mean_loss, writer)
+      self.log_losses(
+        tag = 'train',
+        meta = meta,
+        total_loss = loss,
+        policy_loss = policy_loss,
+        win_rate_loss = win_rate_loss,
+        softened_policy_loss = softened_policy_loss,
+        ownership_loss = ownership_loss,
+        score_dist_loss = score_dist_loss,
+        score_mean_loss = score_mean_loss,
+        writer = writer
+      )
 
       if (
         meta.batches - begin_batches > 0
@@ -162,10 +180,27 @@ class Trainer:
       ):
         with torch.no_grad():
           model.eval()
-          policy_loss, win_rate_loss, softened_policy_loss, ownership_loss, score_dist_loss, score_mean_loss, loss = \
-            self.get_losses(model, next(self.test_dataloader))
+          data = self.execute_model(model, next(self.test_dataloader))
+          policy_loss = data['policy_loss']
+          win_rate_loss = data['win_rate_loss']
+          softened_policy_loss = data['softened_policy_loss']
+          ownership_loss = data['ownership_loss']
+          score_dist_loss = data['score_dist_loss']
+          score_mean_loss = data['score_mean_loss']
+          loss = data['loss']
           model.train()
-        self.log_losses('test', meta, loss, policy_loss, win_rate_loss, softened_policy_loss, ownership_loss, score_dist_loss, score_mean_loss, writer)
+        self.log_losses(
+          tag = 'test',
+          meta = meta,
+          total_loss = loss,
+          policy_loss = policy_loss,
+          win_rate_loss = win_rate_loss,
+          softened_policy_loss = softened_policy_loss,
+          ownership_loss = ownership_loss,
+          score_dist_loss = score_dist_loss,
+          score_mean_loss = score_mean_loss,
+          writer = writer
+        )
 
       meta.batches += 1
 
@@ -176,9 +211,7 @@ class Trainer:
         last_checkpoint_time = time.time()
         print(f'checkpoint saved at {datetime.now().strftime("%H:%M:%S")}')
 
-  def get_losses(self, model: nn.Module, data: tuple[torch.Tensor]) \
-    -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    '''return policy_loss(1), win_rate_loss(1), softened_policy_loss(1), ownership_loss(1), score_dist_loss(1), score_mean_loss(1), total_loss'''
+  def execute_model(self, model: nn.Module, data: tuple[torch.Tensor]) -> dict[str, torch.Tensor]:
     input_tensor, policy_targets, win_rate_targets, ownership_targets, score_targets = data
     valid_mask = self.get_valid_mask(input_tensor)
     policy_targets = policy_targets * valid_mask # invalid moves does not engage in backward
@@ -217,13 +250,22 @@ class Trainer:
       + self.score_mean_loss_weight * score_mean_loss
     )
 
-    return policy_loss, win_rate_loss, softened_policy_loss, ownership_loss, score_dist_loss, score_mean_loss, loss
+    return {
+      'policy_loss': policy_loss,
+      'win_rate_loss': win_rate_loss,
+      'softened_policy_loss': softened_policy_loss,
+      'ownership_loss': ownership_loss,
+      'score_dist_loss': score_dist_loss,
+      'score_mean_loss': score_mean_loss,
+      'loss': loss
+    }
 
   def save_checkpoint(self, model: nn.Module):
     self.model_manager.save_checkpoint(model)
 
   @staticmethod
   def log_losses(
+    *,
     tag: str,
     meta: MetaData,
     total_loss: torch.Tensor,
