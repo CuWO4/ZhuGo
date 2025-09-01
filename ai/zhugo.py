@@ -21,10 +21,10 @@ class ResidualConvBlock(nn.Module):
     super(ResidualConvBlock, self).__init__()
     self.model = nn.Sequential(
       nn.BatchNorm2d(channels),
-      nn.LeakyReLU(),
+      nn.GELU(),
       nn.Conv2d(channels, channels, kernel_size=3, padding=1, bias=False),
       nn.BatchNorm2d(channels),
-      nn.LeakyReLU(),
+      nn.GELU(),
       nn.Conv2d(channels, channels, kernel_size=3, padding=1, bias=False),
     )
 
@@ -41,7 +41,7 @@ class GlobalBiasBLock(nn.Module):
     super(GlobalBiasBLock, self).__init__()
     self.activate = nn.Sequential(
       nn.BatchNorm2d(channel),
-      nn.LeakyReLU(),
+      nn.GELU(),
     )
 
     self.linear = nn.Linear(2 * channel, channel)
@@ -111,7 +111,7 @@ class ZhuGoResidualConvBlock(nn.Module):
 
     self.encoder_conv1x1 = nn.Sequential(
       nn.BatchNorm2d(channels),
-      nn.LeakyReLU(),
+      nn.GELU(),
       nn.Conv2d(channels, inner_channels, kernel_size=1, bias=False),
     )
 
@@ -122,7 +122,7 @@ class ZhuGoResidualConvBlock(nn.Module):
 
     self.decoder_conv1x1 = nn.Sequential(
       nn.BatchNorm2d(inner_channels),
-      nn.LeakyReLU(),
+      nn.GELU(),
       nn.Conv2d(inner_channels, channels, kernel_size=1, bias=False)
     )
 
@@ -195,14 +195,14 @@ class ZhuGoPolicyHead(nn.Module):
       nn.BatchNorm2d(residual_channel),
       nn.Conv2d(residual_channel, residual_channel, 1, bias = False),
       nn.BatchNorm2d(residual_channel),
-      nn.LeakyReLU(),
+      nn.GELU(),
       MeanMax2dGlobalPool(),
       nn.Flatten()
     )
 
     self.pass_linear = nn.Sequential(
       nn.Linear(2 * residual_channel, residual_channel // 2),
-      nn.LeakyReLU(),
+      nn.GELU(),
       nn.Linear(residual_channel // 2, 1)
     )
 
@@ -212,12 +212,12 @@ class ZhuGoPolicyHead(nn.Module):
       nn.BatchNorm2d(residual_channel),
       nn.Conv2d(residual_channel, residual_channel, 1, bias = False),
       nn.BatchNorm2d(residual_channel),
-      nn.LeakyReLU(),
+      nn.GELU(),
     )
 
     self.post_outp = nn.Sequential(
       nn.BatchNorm2d(residual_channel),
-      nn.LeakyReLU(),
+      nn.GELU(),
       nn.Conv2d(residual_channel, 1, 1)
     )
 
@@ -280,17 +280,17 @@ class ZhuGoValueHead(nn.Module):
 
     self.pre_gpool = nn.Sequential(
       nn.BatchNorm2d(residual_channel),
-      nn.LeakyReLU(),
+      nn.GELU(),
       nn.Conv2d(residual_channel, residual_channel, 1, bias=False),
       nn.BatchNorm2d(residual_channel),
-      nn.LeakyReLU(),
+      nn.GELU(),
     )
 
     self.gpool_flatten_linear = nn.Sequential(
       MeanMax2dGlobalPool(),
       nn.Flatten(),
       nn.Linear(2 * residual_channel, value_middle_width),
-      nn.LeakyReLU(),
+      nn.GELU(),
     )
 
     self.win_rate_head = nn.Sequential(
