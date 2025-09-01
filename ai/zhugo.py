@@ -252,7 +252,23 @@ class ZhuGoPolicyHead(nn.Module):
     ), dim = 1)
 
 class ZhuGoValueHead(nn.Module):
-  '''(B, C, N, M) -> (B, 1)'''
+  '''
+  (B, C, N, M) -> (B, 1), (B, N * M), (B, SCORE_BUCKET_COUNT)
+  win_rate, ownership, score
+  '''
+  # lower bound, upper bound, all buckets contains lower bound
+  SCORE_BUCKETS = torch.tensor((
+    (-1, -0.3),
+    (-0.3, -0.1),
+    (-0.1, -0.03),
+    (-0.03, -0.01),
+    (-0.01, 0),
+    (0, 0.01),
+    (0.01, 0.03),
+    (0.03, 0.1),
+    (0.1, 0.3),
+    (0.3, 1),
+  ), device = 'cuda')
   def __init__(
     self,
     residual_channel: int,
@@ -262,34 +278,72 @@ class ZhuGoValueHead(nn.Module):
   ):
     super(ZhuGoValueHead, self).__init__()
 
-    self.model = nn.Sequential(
+    self.pre_gpool = nn.Sequential(
       nn.BatchNorm2d(residual_channel),
       nn.LeakyReLU(),
       nn.Conv2d(residual_channel, residual_channel, 1, bias=False),
       nn.BatchNorm2d(residual_channel),
       nn.LeakyReLU(),
+    )
+
+    self.gpool_flatten_linear = nn.Sequential(
       MeanMax2dGlobalPool(),
       nn.Flatten(),
       nn.Linear(2 * residual_channel, value_middle_width),
       nn.LeakyReLU(),
-      nn.Dropout(0.5),
-      nn.Linear(value_middle_width, 1)
     )
 
-    kaiming_init_sequential(self.model)
-    nn.init.xavier_normal_(self.model[-1].weight)
-    nn.init.zeros_(self.model[-1].bias)
+    self.win_rate_head = nn.Sequential(
+      nn.Dropout(0.5),
+      nn.Linear(value_middle_width, 1),
+    )
+
+    self.score_head = nn.Sequential(
+      nn.Dropout(0.5),
+      nn.Linear(value_middle_width, self.SCORE_BUCKETS.shape[0]),
+    )
+
+    self.ownership_head = nn.Sequential(
+      nn.Conv2d(residual_channel, 1, 1, bias=True),
+      nn.Flatten(),
+    )
+
+    kaiming_init_sequential(self.pre_gpool)
+    kaiming_init_sequential(self.gpool_flatten_linear)
+    kaiming_init_sequential(self.win_rate_head)
+    kaiming_init_sequential(self.score_head)
+
+    nn.init.xavier_normal_(self.win_rate_head[-1].weight)
+    nn.init.zeros_(self.win_rate_head[-1].bias)
+    nn.init.xavier_normal_(self.score_head[-1].weight)
+    nn.init.zeros_(self.score_head[-1].bias)
+    nn.init.xavier_normal_(self.ownership_head[0].weight)
+    nn.init.zeros_(self.ownership_head[0].bias)
 
     self.checkpoint = checkpoint
 
-  def forward(self, x):
-    return checkpoint(self.model, x, use_reentrant = False) if self.checkpoint else self.model(x)
+  def forward(self, x) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    if self.checkpoint:
+      shared = checkpoint(self.pre_gpool, x, use_reentrant=False)
+      ownership = checkpoint(self.ownership_head, shared, use_reentrant=False)
+      shared = checkpoint(self.gpool_flatten_linear, shared, use_reentrant=False)
+      win_rate = checkpoint(self.win_rate_head, shared, use_reentrant=False)
+      score = checkpoint(self.score_head, shared, use_reentrant=False)
+    else:
+      shared = self.pre_gpool(x)
+      ownership = self.ownership_head(shared)
+      shared = self.gpool_flatten_linear(shared)
+      win_rate = self.win_rate_head(shared)
+      score = self.score_head(shared)
+    return win_rate, ownership, score
 
 class ZhuGo(nn.Module):
   '''
-  (B, C, N, M) -> (B, N * M + 1), (B, 1)
+  (B, C, N, M) -> (B, N * M + 1), (B, 1), (B, N * M), (B, SCORE_BUCKET_COUNT)
   first is policy output logits, unnormalized, 361 (row-major moves) + 1 (pass turn).
-  second is value output logits, inactivated.
+  second is win_rate output logits, inactivated.
+  third is ownership prediction logits, inactivated & unnormalized.
+  fourth is scoring prediction logits, being consistent with ZhuGoValueHead.SCORE_BUCKETS, inactivated.
   '''
   def __init__(
     self, *,
@@ -327,8 +381,8 @@ class ZhuGo(nn.Module):
       residual_channels[0], value_middle_width, checkpoint = checkpoint
     )
 
-  def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+  def forward(self, x: torch.Tensor):
     shared = self.shared(x)
     policy = self.policy(shared)
-    value = self.value(shared)
-    return policy, value
+    win_rate, ownership, score = self.value(shared)
+    return policy, win_rate, ownership, score

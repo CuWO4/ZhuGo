@@ -2,16 +2,16 @@ from ai.manager import ModelManager
 from .dataloader import BGTFDataLoader
 from .optimizer_manager import OptimizerManager
 from .meta import MetaData
+from ai.zhugo import ZhuGoValueHead
 
 from ai.encoder.zhugo_encoder import ZhuGoEncoder # dirty code, but let's do it for now
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torch.cuda.amp as amp
+import torch.amp as amp
 from torch.utils.tensorboard import SummaryWriter
-import math
-from typing import Callable, TypeVar, Optional, Iterable
+from typing import Callable, Iterable, Optional
 import time
 from datetime import datetime
 
@@ -41,16 +41,17 @@ def cross_entropy(target: torch.Tensor, output_logits: torch.Tensor) -> torch.Te
   ).unsqueeze(1)
   return losses.clamp(0, MAX_LOSS_VALUE)
 
-def scalar_cross_entropy(target: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
-  '''p(B, 1), q(B, 1) -> (B, 1)'''
-  assert target.shape == output.shape and len(target.shape) == 2 and target.shape[1] == 1, (
+def point_wise_scalar_cross_entropy(target: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+  '''p(B, N), q(B, N) -> (B, 1)'''
+  assert target.shape == output.shape and len(target.shape) == 2, (
     f'improper shape {target.shape=} vs. {output.shape=}'
   )
-  '''assume -1 <= p, q <= 1, make it (-1, 1) one-hot encoding, return cross entropy'''
-  assert torch.all((output >= -1) & (output <= 1))
-  losses = -(
+  # assume -1 <= p, q <= 1, make it (-1, 1) one-hot encoding, return cross entropy
+  assert torch.all((target >= -1) & (target <= 1) & (output >= -1) & (output <= 1))
+  losses = -torch.mean(
     (1 - target) / 2 * torch.log((1 - output) / 2 + 1e-5)
-    + (1 + target) / 2 * torch.log((1 + output) / 2 + 1e-5)
+    + (1 + target) / 2 * torch.log((1 + output) / 2 + 1e-5),
+    dim=-1, keepdim=True
   )
   return losses.clamp(0, MAX_LOSS_VALUE)
 
@@ -64,13 +65,19 @@ class Trainer:
     batch_accumulation: int,
     batch_per_test: int,
     test_dataloader: BGTFDataLoader | None = None,
-    policy_lost_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = cross_entropy,
-    value_lost_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = scalar_cross_entropy,
+    policy_loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = cross_entropy,
+    win_rate_loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = point_wise_scalar_cross_entropy,
+    ownership_loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = point_wise_scalar_cross_entropy,
+    score_dist_loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = cross_entropy,
+    score_mean_loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = nn.HuberLoss(delta=10, reduction='none'),
     gradient_clip: float,
     policy_loss_weight: Optional[float] = None,
-    value_loss_weight: float,
-    soft_target_nominal_weight: float,
+    win_rate_loss_weight: float,
+    softened_policy_loss_weight: float,
     softening_intensity: float,
+    ownership_loss_weight: float,
+    score_dist_loss_weight: float,
+    score_mean_loss_weight: float,
     checkpoint_interval_sec: int,
   ):
     self.model_manager: ModelManager = model_manager
@@ -78,16 +85,23 @@ class Trainer:
     self.dataloader: BGTFDataLoader = dataloader
     self.batch_accumulation: int = batch_accumulation
     self.batch_per_test: int = batch_per_test
-    self.test_dataloader: BGTFDataLoader | None = test_dataloader
-    self.policy_lost_fn: Callable = policy_lost_fn
-    self.value_lost_fn: Callable = value_lost_fn
+    self.test_dataloader: Iterable[BGTFDataLoader] | None = iter(test_dataloader) \
+      if test_dataloader is not None else None
+    self.policy_loss_fn: Callable = policy_loss_fn
+    self.win_rate_loss_fn: Callable = win_rate_loss_fn
+    self.ownership_loss_fn: Callable = ownership_loss_fn
+    self.score_dist_loss_fn: Callable = score_dist_loss_fn
+    self.score_mean_loss_fn: Callable = score_mean_loss_fn
     if policy_loss_weight is not None:
       print('<Trainer> policy_loss_weight is deprecated, which will not take in counter anymore. '
-            'set value_loss_weight only instead, while equivalent policy_loss_weight = 1.0.')
+            'set win_rate_loss_weight only instead, while equivalent policy_loss_weight = 1.0.')
     self.gradient_clip: float = gradient_clip
-    self.value_loss_weight: float = value_loss_weight
-    self.soft_target_nominal_weight: float = soft_target_nominal_weight
+    self.win_rate_loss_weight: float = win_rate_loss_weight
+    self.softened_policy_loss_weight: float = softened_policy_loss_weight
     self.softening_intensity: float = softening_intensity
+    self.ownership_loss_weight: float = ownership_loss_weight
+    self.score_dist_loss_weight: float = score_dist_loss_weight
+    self.score_mean_loss_weight: float = score_mean_loss_weight
     self.checkpoint_interval_sec: int = checkpoint_interval_sec
 
   def train(self, device = 'cuda' if torch.cuda.is_available() else 'cpu'):
@@ -120,46 +134,40 @@ class Trainer:
 
     last_checkpoint_time = time.time()
 
-    # only for displaying statics
-    accumulated_total_loss: float = 0
-    accumulated_policy_loss: float = 0
-    accumulated_value_loss: float = 0
-
     begin_batches = meta.batches
 
-    for inputs, policy_targets, value_targets in self.dataloader:
-      valid_mask = self.get_valid_mask(inputs)
-      policy_targets *= valid_mask # invalid moves does not engage in backward
-
-      with amp.autocast():
-        policy_logits, value_logits = model(inputs)
-
-        policy_losses = self.policy_lost_fn(policy_targets, policy_logits)
-        value_losses = self.value_lost_fn(value_targets, nn.functional.tanh(value_logits))
-
-        softened_policy_target = policy_targets ** self.softening_intensity
-        softened_policy_target /= softened_policy_target.sum(dim = -1, keepdim = True) + 1e-8
-
-        policy_losses += self.soft_target_nominal_weight * self.policy_lost_fn(softened_policy_target, policy_logits)
-
-        losses = policy_losses + value_losses * self.value_loss_weight
-
-        loss = torch.mean(losses)
+    for data in self.dataloader:
+      with amp.autocast('cuda'):
+        data = self.execute_model(model, data)
+        policy_loss = data['policy_loss']
+        win_rate_loss = data['win_rate_loss']
+        softened_policy_loss = data['softened_policy_loss']
+        ownership_loss = data['ownership_loss']
+        score_dist_loss = data['score_dist_loss']
+        score_mean_loss = data['score_mean_loss']
+        loss = data['loss']
+        policy_accuracy = data['policy_accuracy']
+        win_rate_accuracy = data['win_rate_accuracy']
+        ownership_accuracy = data['ownership_accuracy']
         backward_loss = loss / self.batch_accumulation
 
       scaler.scale(backward_loss).backward()
 
       self.log_losses(
-        'train', meta,
-        loss.item(),
-        policy_losses.mean().item(),
-        value_losses.mean().item(),
-        writer
+        tag = 'train',
+        meta = meta,
+        total_loss = loss,
+        policy_loss = policy_loss,
+        win_rate_loss = win_rate_loss,
+        softened_policy_loss = softened_policy_loss,
+        ownership_loss = ownership_loss,
+        score_dist_loss = score_dist_loss,
+        score_mean_loss = score_mean_loss,
+        policy_accuracy = policy_accuracy,
+        win_rate_accuracy = win_rate_accuracy,
+        ownership_accuracy = ownership_accuracy,
+        writer = writer
       )
-
-      accumulated_total_loss += loss.item() / self.batch_accumulation
-      accumulated_policy_loss += torch.mean(policy_losses).item() / self.batch_accumulation
-      accumulated_value_loss += torch.mean(value_losses).item() / self.batch_accumulation
 
       if (
         meta.batches - begin_batches > 0
@@ -171,32 +179,39 @@ class Trainer:
         scaler.update()
         optimizer.zero_grad()
 
-        if self.batch_accumulation > 0:
-          self.log_losses(
-            'acc', meta,
-            accumulated_total_loss,
-            accumulated_policy_loss,
-            accumulated_value_loss,
-            writer
-          )
-
-        accumulated_total_loss = 0
-        accumulated_policy_loss = 0
-        accumulated_value_loss = 0
-
       if (
         self.test_dataloader is not None
         and meta.batches - begin_batches > 0
         and (meta.batches - begin_batches) % self.batch_per_test == self.batch_per_test - 1
       ):
-        validate_policy_loss, validate_value_loss = self.test_model(model)
-        validate_loss = validate_policy_loss + validate_value_loss * self.value_loss_weight
+        with torch.no_grad():
+          model.eval()
+          data = self.execute_model(model, next(self.test_dataloader))
+          policy_loss = data['policy_loss']
+          win_rate_loss = data['win_rate_loss']
+          softened_policy_loss = data['softened_policy_loss']
+          ownership_loss = data['ownership_loss']
+          score_dist_loss = data['score_dist_loss']
+          score_mean_loss = data['score_mean_loss']
+          policy_accuracy = data['policy_accuracy']
+          win_rate_accuracy = data['win_rate_accuracy']
+          ownership_accuracy = data['ownership_accuracy']
+          loss = data['loss']
+          model.train()
         self.log_losses(
-          'test', meta,
-          validate_loss.item(),
-          validate_policy_loss.item(),
-          validate_value_loss.item(),
-          writer
+          tag = 'test',
+          meta = meta,
+          total_loss = loss,
+          policy_loss = policy_loss,
+          win_rate_loss = win_rate_loss,
+          softened_policy_loss = softened_policy_loss,
+          ownership_loss = ownership_loss,
+          score_dist_loss = score_dist_loss,
+          score_mean_loss = score_mean_loss,
+          policy_accuracy = policy_accuracy,
+          win_rate_accuracy = win_rate_accuracy,
+          ownership_accuracy = ownership_accuracy,
+          writer = writer
         )
 
       meta.batches += 1
@@ -208,32 +223,93 @@ class Trainer:
         last_checkpoint_time = time.time()
         print(f'checkpoint saved at {datetime.now().strftime("%H:%M:%S")}')
 
-  def test_model(self, model: nn.Module) -> tuple[torch.Tensor, torch.Tensor]:
-    '''return policy_loss(1), value_loss(1)'''
-    assert self.test_dataloader is not None
-    inputs, policies, values = next(iter(self.test_dataloader))
+  def execute_model(self, model: nn.Module, data: tuple[torch.Tensor]) -> dict[str, torch.Tensor]:
+    input_tensor, policy_targets, win_rate_targets, ownership_targets, score_targets = data
+    valid_mask = self.get_valid_mask(input_tensor)
+    policy_targets = policy_targets * valid_mask # invalid moves does not engage in backward
 
-    with torch.no_grad():
-      model.eval()
-      policy_logits, value_logits = model(inputs)
-      model.train()
+    max_score = input_tensor.shape[-2] * input_tensor.shape[-1]
+    normalized_scores = score_targets / max_score
+    score_bucket_target = self.get_score_bucket_target(normalized_scores)
 
-    policy_losses = self.policy_lost_fn(policies, policy_logits)
-    value_losses = self.value_lost_fn(values, nn.functional.tanh(value_logits))
-    return policy_losses.mean(), value_losses.mean()
+    softened_policy_targets = policy_targets ** self.softening_intensity
+    softened_policy_targets /= softened_policy_targets.sum(dim = -1, keepdim = True) + 1e-8
+
+    policy_logits, win_rate_logits, ownership_logits, score_logits = model(input_tensor)
+
+    normalized_score_prediction = torch.softmax(score_logits, dim=-1)
+
+    policy_losses = self.policy_loss_fn(policy_targets, policy_logits)
+    win_rate_losses = self.win_rate_loss_fn(win_rate_targets, nn.functional.tanh(win_rate_logits))
+    softened_policy_losses = self.policy_loss_fn(softened_policy_targets, policy_logits)
+    ownership_losses = self.ownership_loss_fn(ownership_targets, nn.functional.tanh(ownership_logits))
+    score_dist_losses = self.score_dist_loss_fn(score_bucket_target, score_logits)
+    score_mean_losses = self.score_mean_loss_fn(score_targets, self.get_score_mean(normalized_score_prediction) * max_score)
+
+    policy_loss = policy_losses.mean()
+    win_rate_loss = win_rate_losses.mean()
+    softened_policy_loss = softened_policy_losses.mean()
+    ownership_loss = ownership_losses.mean()
+    score_dist_loss = score_dist_losses.mean()
+    score_mean_loss = score_mean_losses.mean()
+
+    policy_accuracy = (torch.argmax(policy_logits, dim=-1) == torch.argmax(policy_targets, dim=-1)).float().mean()
+    win_rate_accuracy = (torch.sign(win_rate_logits) == torch.sign(win_rate_targets)).float().mean()
+    ownership_accuracy = (torch.sign(ownership_logits) == torch.sign(ownership_targets)).float().mean()
+
+    loss = (
+      policy_loss
+      + self.win_rate_loss_weight * win_rate_loss
+      + self.softened_policy_loss_weight * softened_policy_loss
+      + self.ownership_loss_weight * ownership_loss
+      + self.score_dist_loss_weight * score_dist_loss
+      + self.score_mean_loss_weight * score_mean_loss
+    )
+
+    return {
+      'policy_loss': policy_loss,
+      'win_rate_loss': win_rate_loss,
+      'softened_policy_loss': softened_policy_loss,
+      'ownership_loss': ownership_loss,
+      'score_dist_loss': score_dist_loss,
+      'score_mean_loss': score_mean_loss,
+      'loss': loss,
+      'policy_accuracy': policy_accuracy,
+      'win_rate_accuracy': win_rate_accuracy,
+      'ownership_accuracy': ownership_accuracy,
+    }
 
   def save_checkpoint(self, model: nn.Module):
     self.model_manager.save_checkpoint(model)
 
   @staticmethod
   def log_losses(
+    *,
     tag: str,
     meta: MetaData,
-    total_loss: float,
-    policy_loss: float,
-    value_loss: float,
+    total_loss: torch.Tensor,
+    policy_loss: torch.Tensor,
+    win_rate_loss: torch.Tensor,
+    softened_policy_loss: torch.Tensor,
+    ownership_loss: torch.Tensor,
+    score_dist_loss: torch.Tensor,
+    score_mean_loss: torch.Tensor,
+    policy_accuracy: torch.Tensor,
+    win_rate_accuracy: torch.Tensor,
+    ownership_accuracy: torch.Tensor,
     writer: SummaryWriter,
   ):
+    total_loss = total_loss.item()
+    policy_loss = policy_loss.item()
+    win_rate_loss = win_rate_loss.item()
+    softened_policy_loss = softened_policy_loss.item()
+    ownership_loss = ownership_loss.item()
+    score_dist_loss = score_dist_loss.item()
+    score_mean_loss = score_mean_loss.item()
+    policy_accuracy = policy_accuracy.item()
+    win_rate_accuracy = win_rate_accuracy.item()
+    ownership_accuracy = ownership_accuracy.item()
+
     print(
       f'{meta.batches:>8}'
       f'{f"<{tag}>":>15}'
@@ -241,7 +317,14 @@ class Trainer:
     )
     writer.add_scalars('train/total_loss', { tag: total_loss, }, meta.batches)
     writer.add_scalars('train/policy_loss', { tag: policy_loss, }, meta.batches)
-    writer.add_scalars('train/value_loss', { tag: value_loss, }, meta.batches)
+    writer.add_scalars('train/win_rate_loss', { tag: win_rate_loss, }, meta.batches)
+    writer.add_scalars('train/softened_policy_loss', { tag: softened_policy_loss }, meta.batches)
+    writer.add_scalars('train/ownership_loss', { tag: ownership_loss }, meta.batches)
+    writer.add_scalars('train/score_dist_loss', { tag: score_dist_loss }, meta.batches)
+    writer.add_scalars('train/score_mean_loss', { tag: score_mean_loss }, meta.batches)
+    writer.add_scalars('train/policy_accuracy', { tag: policy_accuracy }, meta.batches)
+    writer.add_scalars('train/win_rate_accuracy', { tag: win_rate_accuracy }, meta.batches)
+    writer.add_scalars('train/ownership_accuracy', { tag: ownership_accuracy }, meta.batches)
 
   @staticmethod
   def log_histogram(model: nn.Module, meta: MetaData, writer: SummaryWriter):
@@ -264,3 +347,18 @@ class Trainer:
         torch.ones(batch_size, 1, device = valid_mask.device)
       ), dim = 1
     )
+
+  @staticmethod
+  def get_score_bucket_target(normalized_scores: torch.Tensor) -> torch.Tensor:
+    assert torch.all((normalized_scores >= -1) & (normalized_scores <= 1))
+    lower_bounds = ZhuGoValueHead.SCORE_BUCKETS[:, 0]
+    upper_bounds = ZhuGoValueHead.SCORE_BUCKETS[:, 1]
+    mask_prev = (normalized_scores >= lower_bounds[:-1]) & (normalized_scores < upper_bounds[:-1])
+    mask_last = (normalized_scores >= lower_bounds[-1]) & (normalized_scores <= upper_bounds[-1])
+    mask = torch.cat([mask_prev, mask_last], dim = 1)
+    return mask.float()
+
+  @staticmethod
+  def get_score_mean(normalized_score_distribution: torch.Tensor) -> torch.Tensor:
+    score_center = (ZhuGoValueHead.SCORE_BUCKETS[:, 0] + ZhuGoValueHead.SCORE_BUCKETS[:, 1]) / 2
+    return torch.sum(normalized_score_distribution * score_center, dim=-1, keepdim=True)

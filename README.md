@@ -11,10 +11,6 @@
 ![猪](docs/pic/zhu.jpg)
 \* 这是猪, 他没怎么样, 只是他很可爱想给你们看看.
 
-## Demo
-
-TODO
-
 ## Build
 
 在根目录执行
@@ -40,7 +36,7 @@ python main.py create -c CONF -p PATH
 将按照配置文件创建模型. 具体可以参考 `conf/model/`.
 
 ```shell
-python -O main.py -m [MODEL ROOT] -d [DATASET ROOT] -c CONF
+python -O main.py train -m [MODEL ROOT] -d [DATASET ROOT] -c CONF
 ```
 
 将开启训练, 具体可参考 `conf/train/`.
@@ -52,3 +48,7 @@ python main.py --help
 ```
 
 查看更多细节.
+
+## 架构细节
+
+检查 `docs/` 查看博客文档.
