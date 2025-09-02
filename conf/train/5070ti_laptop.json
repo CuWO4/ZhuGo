@@ -3,9 +3,15 @@
   "prefetch_batch": 120,
   "test_prefetch_batch": 50,
   "optimizer": {
-    "lr": 0.15,
-    "momentum": 0.9,
-    "weight_decay": 3e-5
+    "lr": {
+      "shared_trunk_lr": 0.15,
+      "policy_head_lr": 0.15,
+      "value_head_lr": 0.15
+    },
+    "arguments": {
+      "momentum": 0.9,
+      "weight_decay": 3e-5
+    }
   },
   "trainer": {
     "batch_accumulation": 2,

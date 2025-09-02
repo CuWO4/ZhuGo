@@ -14,9 +14,16 @@ class OptimizerManager:
 
   def __init__(
     self, root: str, OptimizerType: type,
-    *, optim_args: tuple = (), optim_kwargs: dict = {},
+    *,
+    shared_trunk_lr: float,
+    policy_head_lr: float,
+    value_head_lr: float,
+    optim_args: tuple = (), optim_kwargs: dict = {},
   ):
     self.root = root
+    self.shared_trunk_lr: float = shared_trunk_lr
+    self.policy_head_lr: float = policy_head_lr
+    self.value_head_lr: float = value_head_lr
     self.OptimizerType: type = OptimizerType
     self.optim_args: tuple = optim_args
     self.optim_kwargs: dict = optim_kwargs
@@ -28,7 +35,12 @@ class OptimizerManager:
 
   def load_optimizer(self, model: ZhuGo):
     optimizer: optim.Optimizer = self.OptimizerType(
-      model.parameters(), *self.optim_args, **self.optim_kwargs
+      [
+        { 'params': model.shared.parameters(), 'lr': self.shared_trunk_lr },
+        { 'params': model.policy.parameters(), 'lr': self.policy_head_lr },
+        { 'params': model.value.parameters(), 'lr': self.value_head_lr },
+      ],
+      *self.optim_args, **self.optim_kwargs
     )
 
     optimizer_path = os.path.join(self.root, self.OPTIMIZER_FILE)

@@ -15,14 +15,14 @@ def start_play(args: argparse.Namespace, conf: dict):
 
   if conf['mode'] == 'game':
     ui_game.start_game(
-      *agents, 
-      UIClass = load_class_by_name(conf['gui']), 
+      *agents,
+      UIClass = load_class_by_name(conf['gui']),
       game_settings = conf['game']
     )
   elif conf['mode'] == 'analysis':
     ui_analysis.start_analysis(
-      *agents, 
-      UIClass = load_class_by_name(conf['gui']), 
+      *agents,
+      UIClass = load_class_by_name(conf['gui']),
       game_settings = conf['game']
     )
   else:
@@ -52,7 +52,10 @@ def start_train(args: argparse.Namespace, conf: dict):
 
   trainer = Trainer(
     model_manager = ModelManager(args.model, ZhuGo),
-    optimizer_manager = OptimizerManager(args.model, optim.SGD, optim_kwargs = conf['optimizer']),
+    optimizer_manager = OptimizerManager(
+      args.model, optim.SGD, **conf['optimizer']['lr'],
+      optim_kwargs = conf['optimizer']['arguments']
+    ),
     dataloader = BGTFDataLoader(
       args.dataset,
       conf['batch_size'],
