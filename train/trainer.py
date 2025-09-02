@@ -14,6 +14,7 @@ from torch.utils.tensorboard import SummaryWriter
 from typing import Callable, Iterable, Optional
 import time
 from datetime import datetime
+import sys
 
 __all__ = [
   'Trainer'
@@ -114,18 +115,24 @@ class Trainer:
 
     with self.model_manager.load_summary_writer() as writer:
       model = self.model_manager.load_model(device = device)
-      model.train()
-      optimizer = self.optimizer_manager.load_optimizer(model)
+      if sys.platform == 'linux':
+        compiled_model = torch.compile(model, mode='default')
+        torch.set_float32_matmul_precision('high')
+      else:
+        print('runtime warning: torch not on linux has not supported torch.compile so far, use raw model instead')
+        compiled_model = model
+      compiled_model.train()
+      optimizer = self.optimizer_manager.load_optimizer(compiled_model)
       meta = self.model_manager.load_meta()
 
       def stop_handling():
         print('stopped. saving...')
-        self.model_manager.save_model(model)
+        self.model_manager.save_model(model) # compiled model is just a view of model, save raw model for compatibility
         self.model_manager.save_meta(meta)
         self.optimizer_manager.save_optimizer(optimizer)
 
       ctrl_c_catcher(
-        lambda: self.train_body(model, optimizer, meta, writer),
+        lambda: self.train_body(compiled_model, optimizer, meta, writer),
         stop_handling
       )
 
