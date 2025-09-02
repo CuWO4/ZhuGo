@@ -27,7 +27,7 @@ class BGTFDataLoader:
     encoder: Encoder,
     *,
     prefetch_batch: int = 300,
-    device: str = 'cuda' if torch.cuda.is_available else 'cpu',
+    device: str = 'cuda' if torch.cuda.is_available() else 'cpu',
     # file decoding, data enhancement and move to share memory are
     # relevantly slow, requires big prefetch batch
     debug: bool = False
