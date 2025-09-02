@@ -115,7 +115,7 @@ class Trainer:
     with self.model_manager.load_summary_writer() as writer:
       model = self.model_manager.load_model(device = device)
       model.train()
-      optimizer = self.optimizer_manager.load_optimizer(model.parameters())
+      optimizer = self.optimizer_manager.load_optimizer(model)
       meta = self.model_manager.load_meta()
 
       def stop_handling():
