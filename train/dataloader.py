@@ -16,9 +16,6 @@ __all__ = [
 ]
 
 
-def busy_wait(end_cond: Callable, interval_ms: int):
-  while not end_cond(): time.sleep(interval_ms * 1e-3)
-
 class BGTFDataLoader:
   def __init__(
     self,
@@ -33,24 +30,24 @@ class BGTFDataLoader:
     debug: bool = False
   ):
     super().__init__()
+    ctx = mp.get_context('spawn') # fork mode introduce instability
     self.device = device
     self.debug = debug
-    self.cached = mp.Queue()
+    self.cached = ctx.Queue(maxsize = prefetch_batch)
 
     encoder.device = 'cpu' # store prefetched tensors on cpu
 
-    mp.Process(
+    self.worker = ctx.Process(
       target = self.decode_worker,
       kwargs = {
         "result_queue": self.cached,
         "root": root,
         "batch_size": batch_size,
         "encoder": encoder,
-        "prefetch_batch": prefetch_batch,
         "debug": debug,
       },
-      daemon = True,
-    ).start()
+    )
+    self.worker.start()
 
   def __iter__(self) -> Iterator[tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]]:
     while True:
@@ -61,6 +58,9 @@ class BGTFDataLoader:
       ownership = ownership.to(device = self.device)
       score = score.to(device = self.device)
       yield inputs, policies, win_rate, ownership, score
+
+  def close(self):
+    self.worker.terminate()
 
   @staticmethod
   def input_target_stream(root: str, encoder: Encoder, debug: bool) \
@@ -101,21 +101,27 @@ class BGTFDataLoader:
     root: str,
     batch_size: int,
     encoder: Encoder,
-    prefetch_batch: int,
     debug: bool,
   ) -> None:
     random.seed()
     batch = []
-    for tensors in BGTFDataLoader.input_target_stream(root, encoder, debug):
-      batch.append(tensors)
-      if len(batch) >= batch_size:
-        busy_wait(lambda: result_queue.qsize() < prefetch_batch, 50)
-        batch_tensor = (
-          torch.cat(list(map(itemgetter(0), batch)), dim = 0),
-          torch.cat(list(map(itemgetter(1), batch)), dim = 0),
-          torch.cat(list(map(itemgetter(2), batch)), dim = 0),
-          torch.cat(list(map(itemgetter(3), batch)), dim = 0),
-          torch.cat(list(map(itemgetter(4), batch)), dim = 0),
-        )
-        result_queue.put(batch_tensor)
-        batch = []
+    try:
+      for tensors in BGTFDataLoader.input_target_stream(root, encoder, debug):
+        batch.append(tensors)
+        if len(batch) >= batch_size:
+          batch_tensor = (
+            torch.cat(list(map(itemgetter(0), batch)), dim = 0),
+            torch.cat(list(map(itemgetter(1), batch)), dim = 0),
+            torch.cat(list(map(itemgetter(2), batch)), dim = 0),
+            torch.cat(list(map(itemgetter(3), batch)), dim = 0),
+            torch.cat(list(map(itemgetter(4), batch)), dim = 0),
+          )
+          result_queue.put(batch_tensor, block = True)
+          batch = []
+    except KeyboardInterrupt:
+      return
+    except Exception:
+      import traceback, sys
+      traceback.print_exc()
+      sys.stderr.flush()
+      raise
