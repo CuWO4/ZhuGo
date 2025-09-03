@@ -1,7 +1,7 @@
 {
   "batch_size": 1536,
-  "prefetch_batch": 120,
-  "test_prefetch_batch": 50,
+  "prefetch_batch": 15,
+  "test_prefetch_batch": 15,
   "optimizer": {
     "lr": {
       "shared_trunk_lr": 0.12,
