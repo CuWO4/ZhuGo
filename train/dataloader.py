@@ -6,7 +6,6 @@ import torch
 import torch.multiprocessing as mp
 import os
 import random
-import time
 from itertools import cycle
 from operator import itemgetter
 from typing import Iterator, Callable

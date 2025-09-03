@@ -15,6 +15,7 @@ from typing import Callable, Iterable, Optional
 import time
 from datetime import datetime
 import sys
+import psutil
 
 __all__ = [
   'Trainer'
@@ -147,6 +148,10 @@ class Trainer:
     begin_batches = meta.batches
 
     for data in self.dataloader:
+      available_memory_GB = psutil.virtual_memory().available / (1024 ** 3)
+      if available_memory_GB < 1.5:
+        print(f'runtime warning: available memory ({available_memory_GB}GB) less than 1.5GB')
+
       with amp.autocast('cuda'):
         data = self.execute_model(model, data)
         policy_loss = data['policy_loss']
