@@ -4,7 +4,7 @@
   "test_prefetch_batch": 50,
   "optimizer": {
     "lr": {
-      "shared_trunk_lr": 0.65,
+      "shared_trunk_lr": 0.065,
       "policy_head_lr": 0.10,
       "value_head_lr": 0.10
     },
