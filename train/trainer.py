@@ -86,7 +86,8 @@ class Trainer:
     self.dataloader: BGTFDataLoader = dataloader
     self.batch_accumulation: int = batch_accumulation
     self.batch_per_test: int = batch_per_test
-    self.test_dataloader: Iterable[BGTFDataLoader] | None = iter(test_dataloader) \
+    self.test_dataloader: BGTFDataLoader | None = test_dataloader
+    self.test_dataloader_iter: Iterable[BGTFDataLoader] | None = iter(test_dataloader) \
       if test_dataloader is not None else None
     self.policy_loss_fn: Callable = policy_loss_fn
     self.win_rate_loss_fn: Callable = win_rate_loss_fn
@@ -130,6 +131,8 @@ class Trainer:
         self.model_manager.save_model(model) # compiled model is just a view of model, save raw model for compatibility
         self.model_manager.save_meta(meta)
         self.optimizer_manager.save_optimizer(optimizer)
+        self.dataloader.close()
+        if self.test_dataloader: self.test_dataloader.close()
 
       ctrl_c_catcher(
         lambda: self.train_body(compiled_model, optimizer, meta, writer),
@@ -187,13 +190,13 @@ class Trainer:
         optimizer.zero_grad()
 
       if (
-        self.test_dataloader is not None
+        self.test_dataloader_iter is not None
         and meta.batches - begin_batches > 0
         and (meta.batches - begin_batches) % self.batch_per_test == self.batch_per_test - 1
       ):
         with torch.no_grad():
           model.eval()
-          data = self.execute_model(model, next(self.test_dataloader))
+          data = self.execute_model(model, next(self.test_dataloader_iter))
           policy_loss = data['policy_loss']
           win_rate_loss = data['win_rate_loss']
           softened_policy_loss = data['softened_policy_loss']
