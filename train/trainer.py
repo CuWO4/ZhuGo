@@ -344,9 +344,16 @@ class Trainer:
   @staticmethod
   def log_histogram(model: nn.Module, meta: MetaData, writer: SummaryWriter):
     for name, param in model.named_parameters():
-      writer.add_histogram(f'weights/{name}', param, meta.batches)
-      if param.grad is not None:
-        writer.add_histogram(f'grads/{name}', param.grad, meta.batches)
+      try:
+        writer.add_histogram(f'weights/{name}', param, meta.batches)
+        if param.grad is not None:
+          writer.add_histogram(f'grads/{name}', param.grad, meta.batches)
+      except ValueError:
+        # histogram logging would complain `ValueError: The histogram is empty, please
+        # file a bug report.` when encountering amp grad scaler set the grad to nan/inf
+        # occasionally. simply ignore. amp will adjust factor next step and grad would
+        # return to normal
+        pass
 
   @staticmethod
   def get_valid_mask(inputs: torch.Tensor) -> torch.Tensor:
