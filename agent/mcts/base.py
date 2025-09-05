@@ -1,7 +1,7 @@
 from go.goboard import GameState, Move
-from utils.move_idx_transformer import move_to_idx
-from utils.eye_identifier import is_point_an_eye
+from ai.encoder.zhugo_encoder import ZhuGoEncoder
 
+import torch
 import numpy as np
 from typing import TypeVar
 import multiprocessing as mp
@@ -12,6 +12,8 @@ __all__ = [
 
 T = TypeVar('T', bound='Node')
 class Node:
+  ENCODER = ZhuGoEncoder(device = 'cpu') # to get valid mask
+
   def __init__(self, *, game_state: GameState, pool: mp.Pool, c: float):
     '''
     indexings are consistent with utils.move_idx_transformer.py
@@ -75,15 +77,11 @@ class Node:
 
     self.branches: list[Node] = [None] * self.policy_size
 
-    self.legal_mask = np.zeros(self.policy_size, dtype=np.float32)
-    self.legal_play_count = 0
-    for move in game_state.legal_moves():
-      if move.is_pass or move.is_resign or is_point_an_eye(
-        self.game_state.board, move.point, game_state.next_player):
-        continue
-      idx = move_to_idx(move, self.game_state.board.size)
-      self.legal_mask[idx] = 1
-      self.legal_play_count += 1
+    self.legal_mask = torch.cat((
+      self.ENCODER.encode(game_state)[ZhuGoEncoder.VALID_MOVE_OFF, :, :].reshape(361),
+      torch.ones((1,), device = 'cpu')
+    ), dim = 0).numpy()
+    self.legal_play_count = np.sum(self.legal_mask)
 
   def propagate(self) -> object:
     '''the return value type is determined by the Node subclass
