@@ -14,8 +14,13 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 c_files = find_c_files(script_dir)
 c_files += find_c_files(script_dir + "/../cboard")
 
+# use clang, gcc would mess up everything (invalid reorder causes core dump)
+# fuck gcc
+import os
+os.environ["CC"] = "clang"
+os.environ["CXX"] = "clang++"
+
 import numpy
-numpy_dir = os.path.dirname(numpy.__file__)
 
 cencoder_extension = Extension(
   'encodermodule',
@@ -23,7 +28,7 @@ cencoder_extension = Extension(
   extra_compile_args=['-O2', '-DNDEBUG', '-std=c++17' if sys.platform == 'linux' else '/std:c++17'],
   include_dirs=[
     script_dir + '/../cboard/',
-    numpy_dir + '/core/include'
+    numpy.get_include()
   ],
 )
 

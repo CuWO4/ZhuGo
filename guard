@@ -1,0 +1,108 @@
+#!/usr/bin/python3
+
+import sys
+import time
+import subprocess
+import os
+import signal
+from datetime import datetime
+
+RESTART_DELAY = 10
+
+def now():
+  return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+def start_proc(cmd):
+  return subprocess.Popen(cmd)
+
+def forward_signal_to_child(child, signum):
+  try:
+    if child and child.poll() is None:
+      os.kill(child.pid, signum)
+  except ProcessLookupError:
+    pass
+  except Exception as e:
+    print(f"[{now()}] forward signal error: {e}")
+
+def kill_child_graceful(child, sig=signal.SIGTERM, wait=5):
+  if not child:
+    return
+  try:
+    if child.poll() is not None:
+      return
+    os.kill(child.pid, sig)
+    try:
+      child.wait(timeout=wait)
+    except subprocess.TimeoutExpired:
+      child.kill()
+  except ProcessLookupError:
+    pass
+  except Exception:
+    try:
+      child.kill()
+    except Exception:
+      pass
+
+def main():
+  if len(sys.argv) <= 1:
+    print("Usage: ./guard <command> [args...]")
+    sys.exit(2)
+
+  cmd = sys.argv[1:]
+  restart_delay = RESTART_DELAY
+
+  print(f"[{now()}] guard starting, command: {' '.join(cmd)}")
+
+  child = None
+  keep_running = True
+  restart_count = 0
+
+  def _handle_signal(signum, frame):
+    nonlocal keep_running, child
+    print(f"[{now()}] guard received signal {signum}, forwarding to child and exiting...")
+    keep_running = False
+    forward_signal_to_child(child, signum)
+
+  signal.signal(signal.SIGINT, _handle_signal)
+  signal.signal(signal.SIGTERM, _handle_signal)
+
+  try:
+    while keep_running:
+      print(f"[{now()}] starting child (restart #{restart_count}) ...")
+      try:
+        child = start_proc(cmd)
+      except FileNotFoundError as e:
+        print(f"[{now()}] failed to start child: {e}")
+        break
+      except Exception as e:
+        print(f"[{now()}] unexpected start error: {e}")
+        break
+
+      while keep_running:
+        try:
+          rc = child.wait()
+          print(f"[{now()}] child exited with code {rc}")
+          break
+        except subprocess.TimeoutExpired:
+          continue
+
+      if not keep_running:
+        if child and child.poll() is None:
+          kill_child_graceful(child, sig=signal.SIGTERM)
+        break
+
+      restart_count += 1
+      if restart_delay > 0:
+        print(f"[{now()}] sleeping {restart_delay}s before restart")
+        time.sleep(restart_delay)
+
+  except Exception as e:
+    print(f"[{now()}] guard encountered exception: {e}")
+    if child and child.poll() is None:
+      kill_child_graceful(child, sig=signal.SIGTERM)
+    raise
+  finally:
+    print(f"[{now()}] guard exiting.")
+
+if __name__ == '__main__':
+  main()

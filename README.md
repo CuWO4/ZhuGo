@@ -11,10 +11,6 @@
 ![猪](docs/pic/zhu.jpg)
 \* 这是猪, 他没怎么样, 只是他很可爱想给你们看看.
 
-## Play
-
-TODO
-
 ## Build
 
 在根目录执行
@@ -28,33 +24,40 @@ python setup.py
 ## Usage
 
 ```shell
-python main.py -c CONF
+python main.py play -c CONF
 ```
 
 将依照配置文件启动棋局. 配置文件可修改棋局信息(如棋盘尺寸, 贴目等), 双方代理(如人类棋手, 传统随机蒙特卡洛树搜索算法bot等), 使用的 GUI等等. 具体可以参考 `conf/main/`.
 
 ```shell
-python create.py -c CONF -p PATH
+python main.py create -c CONF -p PATH
 ```
 
 将按照配置文件创建模型. 具体可以参考 `conf/model/`.
 
-## Architecture
-
-查看 <a href="docs/blog/archietecture.md">architechture.md</a> 以获取更多细节.
-
-## Train
-
-执行
-
 ```shell
-python -O ./train.script.py -m [MODEL ROOT] -d [DATASET ROOT]
+python -O main.py train -m [MODEL ROOT] -d [DATASET ROOT] -c CONF
 ```
 
-以训练, 使用
+将开启训练, 具体可参考 `conf/train/`.
+
+使用
 
 ```shell
-python ./train.script.py --help
+python main.py --help
 ```
 
-以查看更多参数设置.
+查看更多细节.
+
+## 架构细节
+
+检查 `docs/` 查看博客文档.
+
+## KNOWN ISSUES
+
+- [x] 程序在不同环境执行时, 可能存在不明原因的内存泄露. 该行为依操作系统及库版本等依赖而异, 无法稳定复现, 且检查后几乎可以肯定不来自项目本身. 若存在此现象, 请尝试使用项目根目录的 `guard` 脚本守护训练进程, 它会在守护进程被挂掉后尝试以同样命令重新拉起. 其使用方法为
+
+```sh
+./guard [COMMAND] {[ARGS]...}
+# 对应直接执行 [COMMAND] {[ARGS]...}
+```

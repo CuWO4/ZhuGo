@@ -1,0 +1,29 @@
+{
+  "batch_size": 1536,
+  "prefetch_batch": 15,
+  "test_prefetch_batch": 15,
+  "optimizer": {
+    "lr": {
+      "shared_trunk_lr": 0.12,
+      "policy_head_lr": 0.18,
+      "value_head_lr": 0.18
+    },
+    "arguments": {
+      "momentum": 0.9,
+      "weight_decay": 3e-5
+    }
+  },
+  "trainer": {
+    "batch_accumulation": 2,
+    "gradient_clip": 0.75,
+    "win_rate_loss_weight": 1.5,
+    "softened_policy_loss_weight": 0.1,
+    "softening_intensity": 0.25,
+    "ownership_loss_weight": 0.5,
+    "score_dist_loss_weight": 0.2,
+    "score_mean_loss_weight": 0.0015,
+
+    "batch_per_test": 25,
+    "checkpoint_interval_sec": 3600
+  }
+}
