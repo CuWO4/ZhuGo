@@ -16,6 +16,7 @@
   "trainer": {
     "batch_accumulation": 2,
     "gradient_clip": 0.75,
+    "policy_loss_weight": 1.0,
     "win_rate_loss_weight": 1.5,
     "softened_policy_loss_weight": 0.1,
     "softening_intensity": 0.25,

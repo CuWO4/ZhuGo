@@ -95,10 +95,8 @@ class Trainer:
     self.ownership_loss_fn: Callable = ownership_loss_fn
     self.score_dist_loss_fn: Callable = score_dist_loss_fn
     self.score_mean_loss_fn: Callable = score_mean_loss_fn
-    if policy_loss_weight is not None:
-      print('<Trainer> policy_loss_weight is deprecated, which will not take in counter anymore. '
-            'set win_rate_loss_weight only instead, while equivalent policy_loss_weight = 1.0.')
     self.gradient_clip: float = gradient_clip
+    self.policy_loss_weight: float = policy_loss_weight
     self.win_rate_loss_weight: float = win_rate_loss_weight
     self.softened_policy_loss_weight: float = softened_policy_loss_weight
     self.softening_intensity: float = softening_intensity
@@ -273,7 +271,7 @@ class Trainer:
     ownership_accuracy = (torch.sign(ownership_logits) == torch.sign(ownership_targets)).float().mean()
 
     loss = (
-      policy_loss
+      self.policy_loss_weight * policy_loss
       + self.win_rate_loss_weight * win_rate_loss
       + self.softened_policy_loss_weight * softened_policy_loss
       + self.ownership_loss_weight * ownership_loss
