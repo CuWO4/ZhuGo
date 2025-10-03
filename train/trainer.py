@@ -149,6 +149,8 @@ class Trainer:
       available_memory_GB = psutil.virtual_memory().available / (1024 ** 3)
       if available_memory_GB < 1.5:
         print(f'runtime warning: available memory ({available_memory_GB}GB) less than 1.5GB')
+      if available_memory_GB < 0.5:
+        raise RuntimeError(f'available memory ({available_memory_GB}GB) less than 0.5GB')
 
       with amp.autocast('cuda'):
         data = self.execute_model(compiled_model, data)
