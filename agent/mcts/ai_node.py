@@ -57,6 +57,8 @@ class AINode(Node):
     self.leaf_q_sum: np.ndarray = np.zeros(self.policy_size)
     self.leaf_count = np.ndarray = np.zeros(self.policy_size)
 
+    self.init_q_mask: np.ndarray = np.array([self.value] * self.policy_size)
+
   def propagate(self) -> tuple[PredictResult, PredictResult | None]:
     '''return (new_result, removed_result)'''
 
@@ -120,7 +122,7 @@ class AINode(Node):
   @property
   def win_rate(self) -> float:
     if np.sum(self.visited_times) == 0:
-      return 0.5
+      return self.value
     else:
       return (
         self.value if self.is_leaf
@@ -129,7 +131,7 @@ class AINode(Node):
 
   @property
   def q(self) -> np.ndarray:
-    return self.leaf_q_sum / (self.leaf_count + 1e-5)
+    return np.where(self.leaf_count > 0, self.leaf_q_sum / (self.leaf_count + 1e-5), self.init_q_mask)
 
   @property
   def ucb(self) -> np.ndarray:
