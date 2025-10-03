@@ -1,12 +1,12 @@
 {
-  "batch_size": 1536,
-  "prefetch_batch": 15,
+  "batch_size": 1920,
+  "prefetch_batch":15,
   "test_prefetch_batch": 15,
   "optimizer": {
     "lr": {
-      "shared_trunk_lr": 0.12,
-      "policy_head_lr": 0.18,
-      "value_head_lr": 0.18
+      "shared_trunk_lr": 0.65,
+      "policy_head_lr": 0.10,
+      "value_head_lr": 0.10
     },
     "arguments": {
       "momentum": 0.9,
@@ -16,7 +16,7 @@
   "trainer": {
     "batch_accumulation": 2,
     "gradient_clip": 0.75,
-    "policy_loss_weight": 1.0,
+    "policy_loss_weight": 0.4,
     "win_rate_loss_weight": 1.5,
     "softened_policy_loss_weight": 0.1,
     "softening_intensity": 0.25,

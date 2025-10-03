@@ -95,10 +95,8 @@ class Trainer:
     self.ownership_loss_fn: Callable = ownership_loss_fn
     self.score_dist_loss_fn: Callable = score_dist_loss_fn
     self.score_mean_loss_fn: Callable = score_mean_loss_fn
-    if policy_loss_weight is not None:
-      print('<Trainer> policy_loss_weight is deprecated, which will not take in counter anymore. '
-            'set win_rate_loss_weight only instead, while equivalent policy_loss_weight = 1.0.')
     self.gradient_clip: float = gradient_clip
+    self.policy_loss_weight: float = policy_loss_weight
     self.win_rate_loss_weight: float = win_rate_loss_weight
     self.softened_policy_loss_weight: float = softened_policy_loss_weight
     self.softening_intensity: float = softening_intensity
@@ -136,11 +134,11 @@ class Trainer:
         if self.test_dataloader: self.test_dataloader.close()
 
       ctrl_c_catcher(
-        lambda: self.train_body(compiled_model, optimizer, meta, writer),
+        lambda: self.train_body(model, compiled_model, optimizer, meta, writer),
         stop_handling
       )
 
-  def train_body(self, model: nn.Module, optimizer: optim.Optimizer, meta: MetaData, writer: SummaryWriter):
+  def train_body(self, model: nn.Module, compiled_model: nn.Module, optimizer: optim.Optimizer, meta: MetaData, writer: SummaryWriter):
     scaler = amp.GradScaler()
 
     last_checkpoint_time = time.time()
@@ -153,7 +151,7 @@ class Trainer:
         print(f'runtime warning: available memory ({available_memory_GB}GB) less than 1.5GB')
 
       with amp.autocast('cuda'):
-        data = self.execute_model(model, data)
+        data = self.execute_model(compiled_model, data)
         policy_loss = data['policy_loss']
         win_rate_loss = data['win_rate_loss']
         softened_policy_loss = data['softened_policy_loss']
@@ -189,7 +187,7 @@ class Trainer:
         and (meta.batches - begin_batches) % self.batch_accumulation == self.batch_accumulation - 1
       ):
         scaler.unscale_(optimizer)
-        nn.utils.clip_grad_norm_(model.parameters(), self.gradient_clip)
+        nn.utils.clip_grad_norm_(compiled_model.parameters(), self.gradient_clip)
         scaler.step(optimizer)
         scaler.update()
         optimizer.zero_grad()
@@ -200,8 +198,8 @@ class Trainer:
         and (meta.batches - begin_batches) % self.batch_per_test == self.batch_per_test - 1
       ):
         with torch.no_grad():
-          model.eval()
-          data = self.execute_model(model, next(self.test_dataloader_iter))
+          compiled_model.eval()
+          data = self.execute_model(compiled_model, next(self.test_dataloader_iter))
           policy_loss = data['policy_loss']
           win_rate_loss = data['win_rate_loss']
           softened_policy_loss = data['softened_policy_loss']
@@ -212,7 +210,7 @@ class Trainer:
           win_rate_accuracy = data['win_rate_accuracy']
           ownership_accuracy = data['ownership_accuracy']
           loss = data['loss']
-          model.train()
+          compiled_model.train()
         self.log_losses(
           tag = 'test',
           meta = meta,
@@ -273,7 +271,7 @@ class Trainer:
     ownership_accuracy = (torch.sign(ownership_logits) == torch.sign(ownership_targets)).float().mean()
 
     loss = (
-      policy_loss
+      self.policy_loss_weight * policy_loss
       + self.win_rate_loss_weight * win_rate_loss
       + self.softened_policy_loss_weight * softened_policy_loss
       + self.ownership_loss_weight * ownership_loss
