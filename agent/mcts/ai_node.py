@@ -28,11 +28,17 @@ class PredictResult:
   def get_q(self, player: Player) -> float:
     return self.q if player == self.player else -self.q
 
+  def __sub__(self, other: 'PredictResult') -> 'PredictResult':
+    return PredictResult(
+      self.player,
+      self.q - other.get_q(self.player)
+    )
 
 class AINode(Node):
   def __init__(
     self, model: ZhuGo, encoder: ZhuGoEncoder,
-    *, game_state: GameState, pool: mp.Pool, c: float = 1.0
+    *, game_state: GameState, pool: mp.Pool, c: float = 1.0,
+    evaluated_states: dict | None = None
   ):
     super().__init__(game_state=game_state, pool=pool, c=c)
 
@@ -55,62 +61,87 @@ class AINode(Node):
     self._visited_times: np.ndarray = np.zeros(self.policy_size)
 
     self.leaf_q_sum: np.ndarray = np.zeros(self.policy_size)
-    self.leaf_count = np.ndarray = np.zeros(self.policy_size)
+    self.leaf_count: np.ndarray = np.zeros(self.policy_size)
 
     self.init_q_mask: np.ndarray = np.array([self.value] * self.policy_size)
 
-  def propagate(self) -> tuple[PredictResult, PredictResult | None]:
-    '''return (new_result, removed_result)'''
+    self.evaluated_states: dict = evaluated_states if evaluated_states is not None else { game_state: self }
 
+    self.parents: list[tuple['AINode', int]] = []
+
+  def propagate(self) -> None:
     if self.game_state.is_over():
-      return (
+      self.update_and_notify_parents(
+        None, 1,
         PredictResult(
           self.game_state.next_player,
           (1 if self.game_state.winner() == self.game_state.next_player else -1)
-        ),
-        None
+        ), 0
       )
+      return
 
     if self.legal_play_count > 0:
       move_idx = exploring_move_indexes(self.ucb, 1)[0]
     else:
       move_idx = move_to_idx(Move.pass_turn(), self.game_state.board.size)
 
-    if self.branches[move_idx] is None:
-      move = idx_to_move(move_idx, self.game_state.board.size)
-      new_result = self.branch(move).wrap_to_result()
-      self.leaf_count[move_idx] += 1
+    if self.branches[move_idx] is not None:
+      self.branches[move_idx].propagate()
+      return
 
-      removed_result = self.wrap_to_result() if self.is_leaf else None
-
-    else: # self.branches[move_idx] is not None
-      new_result, removed_result = self.branches[move_idx].propagate()
-
-    self._visited_times[move_idx] += 1
-    self.leaf_q_sum[move_idx] += new_result.get_q(self.game_state.next_player)
-
-    if removed_result is not None:
-      if not self.is_leaf:
-        self.leaf_q_sum[move_idx] -= removed_result.get_q(self.game_state.next_player)
+    move = idx_to_move(move_idx, self.game_state.board.size)
+    new_branch = self.branch(move)
+    if new_branch.is_leaf:
+      new_q_sum_acc = new_branch.wrap_to_result()
+      nr_new_visited_times = 1
+      nr_new_leaves = 1
     else:
-      self.leaf_count[move_idx] += 1
+      new_q_sum_acc = PredictResult(
+        new_branch.game_state.next_player,
+        np.sum(new_branch.leaf_q_sum)
+      )
+      nr_new_visited_times = np.sum(new_branch.visited_times)
+      nr_new_leaves = np.sum(new_branch.leaf_count)
+
+    if self.is_leaf:
+      new_q_sum_acc -= self.wrap_to_result()
+      nr_new_leaves -= 1
+
+    self.update_and_notify_parents(move_idx, nr_new_visited_times, new_q_sum_acc, nr_new_leaves)
 
     self.is_leaf = False
 
-    return new_result, removed_result
+  def add_parent(self, parent: 'AINode', idx: int):
+    self.parents.append((parent, idx))
 
   def branch(self, move: Move) -> 'AINode':
     move_idx = move_to_idx(move, self.game_state.board.size)
     if self.branches[move_idx] is None:
-      self.branches[move_idx] = AINode(
-        self.model, self.encoder,
-        game_state=self.game_state.apply_move(move),
-        pool=self.pool, c=self.c
-      )
+      new_state = self.game_state.apply_move(move)
+      if self.evaluated_states.get(new_state) is None:
+        self.evaluated_states[new_state] = AINode(
+          self.model, self.encoder,
+          game_state=new_state,
+          pool=self.pool, c=self.c,
+          evaluated_states=self.evaluated_states
+        )
+      self.branches[move_idx] = self.evaluated_states[new_state]
+      self.branches[move_idx].add_parent(self, move_idx)
     return self.branches[move_idx]
 
   def switch_branch(self, move: Move) -> 'AINode':
     return self.branch(move)
+
+  def update_and_notify_parents(
+    self, child_idx: int | None, nr_new_visited_times: int,
+    leaf_q_sum_acc: PredictResult, nr_new_leaves: int
+  ):
+    if child_idx is not None:
+      self._visited_times[child_idx] += nr_new_visited_times
+      self.leaf_q_sum[child_idx] += leaf_q_sum_acc.get_q(self.game_state.next_player)
+      self.leaf_count[child_idx] += nr_new_leaves
+    for parent, idx in self.parents:
+      parent.update_and_notify_parents(idx, nr_new_visited_times, leaf_q_sum_acc, nr_new_leaves)
 
   def wrap_to_result(self) -> PredictResult:
     return PredictResult(self.game_state.next_player, self.value)
