@@ -241,6 +241,18 @@ class GameState():
       and not self.does_move_violate_ko(self.next_player, move)
     )
 
+  def is_in_ko_state(self):
+    if self.last_move is None or not self.last_move.is_play:
+      return False
+    for dr, dc in ((-1, -1), (-1, 1), (1, -1), (1, 1)):
+      new_point = Point(self.last_move.point.row + dr, self.last_move.point.col + dc)
+      if not self.board.in_board(new_point) or self.board.get(new_point) is not None:
+        continue
+      new_move = Move.play(new_point)
+      if self.does_move_violate_ko(self.next_player, new_move):
+        return True
+    return False
+
   def is_over(self) -> bool:
     if self.last_move is None or self.previous_state is None:
       return False
@@ -300,3 +312,29 @@ class GameState():
       assert state is not None # triggered if other is not self's ancestor
 
     return move_list
+
+  def __eq__(self, other) -> bool:
+    return (
+      isinstance(other, GameState)
+      and self.next_player == other.next_player
+      and self.board == other.board
+      and self.is_in_ko_state() == other.is_in_ko_state()
+    )
+
+  BLACK_PLAYER_STATE_HASH = 0x1F867B576F6801CE
+  WHITE_PLAYER_STATE_HASH = 0x251802AD04EC4874
+  IN_KO_HASH = 0x78C543CA4F3F0B40
+
+  def __hash__(self):
+    return (
+      self.board.hash()
+      ^ (
+        self.BLACK_PLAYER_STATE_HASH
+        if self.next_player == Player.black
+        else self.WHITE_PLAYER_STATE_HASH
+      ) ^ (
+        self.IN_KO_HASH
+        if self.is_in_ko_state()
+        else 0
+      )
+    )
