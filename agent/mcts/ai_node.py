@@ -130,7 +130,10 @@ class AINode(Node):
     return self.branches[move_idx]
 
   def switch_branch(self, move: Move) -> 'AINode':
-    return self.branch(move)
+    target_branch = self.branch(move)
+    # clean up evaluated states, avoid memory leaking
+    target_branch.evaluated_states = { target_branch.game_state: target_branch }
+    return target_branch
 
   def update_and_notify_parents(
     self, child_idx: int | None, nr_new_visited_times: int,
