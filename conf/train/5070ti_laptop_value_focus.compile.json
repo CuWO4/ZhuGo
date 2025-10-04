@@ -4,9 +4,9 @@
   "test_prefetch_batch": 15,
   "optimizer": {
     "lr": {
-      "shared_trunk_lr": 0.65,
-      "policy_head_lr": 0.10,
-      "value_head_lr": 0.10
+      "shared_trunk_lr": 0.15,
+      "policy_head_lr": 0.20,
+      "value_head_lr": 0.20
     },
     "arguments": {
       "momentum": 0.9,
@@ -16,9 +16,9 @@
   "trainer": {
     "batch_accumulation": 2,
     "gradient_clip": 0.75,
-    "policy_loss_weight": 0.4,
+    "policy_loss_weight": 0.2,
     "win_rate_loss_weight": 1.5,
-    "softened_policy_loss_weight": 0.1,
+    "softened_policy_loss_weight": 0.02,
     "softening_intensity": 0.25,
     "ownership_loss_weight": 0.5,
     "score_dist_loss_weight": 0.2,
